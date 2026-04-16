@@ -113,6 +113,8 @@ const state = {
   editingDeliveryId: null,
   editingClientId: null,
   editingSupplierId: null,
+  editingPayableId: null,
+  editingPurchaseId: null,
   unsubscribe: [],
   settings: {
     storeName: 'Minha Loja',
@@ -606,6 +608,8 @@ function resetAppState() {
   state.editingDeliveryId = null;
   state.editingClientId = null;
   state.editingSupplierId = null;
+  state.editingPayableId = null;
+  state.editingPurchaseId = null;
 
   document.body.classList.remove('sidebar-open');
   els.alertsPanel.classList.add('hidden');
@@ -623,6 +627,8 @@ function resetAppState() {
   els.pageTitle.textContent = 'Dashboard';
   els.pageSubtitle.textContent = 'Área: Dashboard.';
   els.loginForm.reset();
+
+  closeActionsSheet();
 }
 
 function bootstrapData() {
@@ -676,6 +682,7 @@ function bootstrapData() {
   state.unsubscribe.push(subscribeCollection('audit_logs', [orderBy('createdAt', 'desc')], (rows) => {
     state.auditLogs = rows;
     renderSettings();
+    renderDashboard();
   }));
 
   state.unsubscribe.push(subscribeCollection('clients', [orderBy('name')], (rows) => {
@@ -753,6 +760,64 @@ async function handleLogout() {
     setScreen(false);
   }
 }
+
+function closeActionsSheet() {
+  const root = document.getElementById('modal-root');
+  if (!root) return;
+
+  const existing = root.querySelector('#global-actions-sheet-backdrop');
+  if (existing) {
+    existing.remove();
+  }
+}
+
+function openActionsSheet(title, actions = []) {
+  const root = document.getElementById('modal-root');
+  if (!root) return;
+
+  closeActionsSheet();
+
+  root.insertAdjacentHTML('beforeend', `
+    <div class="actions-sheet-backdrop" id="global-actions-sheet-backdrop">
+      <div class="actions-sheet">
+        <div class="actions-sheet-header">
+          <h3 class="actions-sheet-title">${title}</h3>
+          <button class="btn btn-secondary" type="button" id="global-actions-sheet-close">Fechar</button>
+        </div>
+        <div class="actions-sheet-actions" id="global-actions-sheet-actions"></div>
+      </div>
+    </div>
+  `);
+
+  const backdrop = document.getElementById('global-actions-sheet-backdrop');
+  const actionsHost = document.getElementById('global-actions-sheet-actions');
+
+  actions.forEach((action) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = action.className || 'btn btn-secondary';
+    button.textContent = action.label || 'Ação';
+    button.addEventListener('click', async () => {
+      try {
+        await action.onClick?.();
+      } finally {
+        closeActionsSheet();
+      }
+    });
+    actionsHost.appendChild(button);
+  });
+
+  document.getElementById('global-actions-sheet-close')?.addEventListener('click', closeActionsSheet);
+
+  backdrop?.addEventListener('click', (event) => {
+    if (event.target.id === 'global-actions-sheet-backdrop') {
+      closeActionsSheet();
+    }
+  });
+}
+
+window.openActionsSheet = openActionsSheet;
+window.closeActionsSheet = closeActionsSheet;
 
 els.loginForm.addEventListener('submit', handleLogin);
 els.logoutBtn.addEventListener('click', handleLogout);

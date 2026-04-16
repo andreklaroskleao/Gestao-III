@@ -36,9 +36,15 @@ export function createPurchasesModule(ctx) {
       });
   }
 
+  function getOrderTotal(items = orderItems) {
+    return items.reduce((sum, item) => {
+      return sum + (Number(item.quantity || 0) * Number(item.costPrice || 0));
+    }, 0);
+  }
+
   function renderOrderItems() {
     if (!orderItems.length) {
-      return '<div class="empty-state">Nenhum item no pedido.</div>';
+      return '<div class="empty-state">Nenhum item adicionado ao pedido.</div>';
     }
 
     return `
@@ -61,7 +67,7 @@ export function createPurchasesModule(ctx) {
                 <td>${currency(item.costPrice || 0)}</td>
                 <td>${currency((item.quantity || 0) * (item.costPrice || 0))}</td>
                 <td>
-                  <button class="btn btn-danger" data-order-remove="${index}">Remover</button>
+                  <button class="btn btn-danger" type="button" data-order-remove="${index}">Remover</button>
                 </td>
               </tr>
             `).join('')}
@@ -69,21 +75,6 @@ export function createPurchasesModule(ctx) {
         </table>
       </div>
     `;
-  }
-
-  function getOrderTotal(items = orderItems) {
-    return items.reduce((sum, item) => {
-      return sum + (Number(item.quantity || 0) * Number(item.costPrice || 0));
-    }, 0);
-  }
-
-  function bindItemEvents() {
-    tabEls.purchases.querySelectorAll('[data-order-remove]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        orderItems.splice(Number(btn.dataset.orderRemove), 1);
-        render();
-      });
-    });
   }
 
   async function createPurchaseOrder(payload) {
@@ -217,7 +208,7 @@ export function createPurchasesModule(ctx) {
         <div class="modal-card">
           <div class="section-header">
             <h2>Receber compra</h2>
-            <button class="btn btn-secondary" id="purchase-modal-close">Fechar</button>
+            <button class="btn btn-secondary" type="button" id="purchase-modal-close">Fechar</button>
           </div>
 
           <div class="card" style="margin-bottom:16px;">
@@ -259,6 +250,15 @@ export function createPurchasesModule(ctx) {
       } catch (error) {
         alert(error.message || 'Erro ao receber compra.');
       }
+    });
+  }
+
+  function bindItemEvents() {
+    tabEls.purchases.querySelectorAll('[data-order-remove]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        orderItems.splice(Number(btn.dataset.orderRemove), 1);
+        render();
+      });
     });
   }
 
@@ -331,14 +331,14 @@ export function createPurchasesModule(ctx) {
           <div class="modal-card">
             <div class="section-header">
               <h2>Selecionar produto</h2>
-              <button class="btn btn-secondary" id="purchase-product-modal-close">Fechar</button>
+              <button class="btn btn-secondary" type="button" id="purchase-product-modal-close">Fechar</button>
             </div>
 
             <div class="search-row">
               <input id="purchase-product-search" placeholder="Buscar produto" />
             </div>
 
-            <div id="purchase-product-results" class="stack-list" style="margin-top:12px;"></div>
+            <div id="purchase-product-results" class="stack-list slim-list" style="margin-top:12px;"></div>
           </div>
         </div>
       `;
@@ -369,7 +369,7 @@ export function createPurchasesModule(ctx) {
             <strong>${escapeHtml(item.name || '-')}</strong>
             <span>Custo atual: ${currency(item.costPrice || 0)} · Estoque: ${item.quantity || 0}</span>
             <div class="inline-row" style="margin-top:8px;">
-              <button class="btn btn-primary" data-product-pick="${item.id}">Selecionar</button>
+              <button class="btn btn-primary" type="button" data-product-pick="${item.id}">Selecionar</button>
             </div>
           </div>
         `).join('') || '<div class="empty-state">Nenhum produto encontrado.</div>';
@@ -401,105 +401,150 @@ export function createPurchasesModule(ctx) {
     }
 
     const rows = getFilteredOrders();
+    const total = getOrderTotal();
 
     tabEls.purchases.innerHTML = `
-      <div class="panel">
-        <div class="section-header">
-          <h2>Pedido de compra</h2>
-          <span class="muted">Solicitação e recebimento de compras de fornecedores</span>
-        </div>
-
-        <form id="purchase-form" class="form-grid">
-          <label>Fornecedor
-            <input name="supplierName" list="suppliers-purchase-datalist" required />
-          </label>
-
-          <datalist id="suppliers-purchase-datalist">
-            ${(state.suppliers || [])
-              .filter((item) => item.active !== false)
-              .map((item) => `<option value="${escapeHtml(item.name || '')}"></option>`)
-              .join('')}
-          </datalist>
-
-          <label>Previsão de entrega<input name="expectedDate" type="date" /></label>
-          <label style="grid-column:1 / -1;">Observações<textarea name="notes"></textarea></label>
-
-          <div class="card" style="grid-column:1 / -1;">
-            <h3>Itens do pedido</h3>
-
-            <input type="hidden" id="purchase-item-product-id" />
-
-            <div class="search-row" style="margin-top:12px; flex-wrap:wrap;">
-              <input id="purchase-item-product-name" placeholder="Produto" />
-              <button class="btn btn-secondary" type="button" id="purchase-product-picker-btn">Selecionar produto</button>
-              <input id="purchase-item-quantity" type="number" min="1" step="1" placeholder="Qtd" />
-              <input id="purchase-item-cost" type="number" min="0" step="0.01" placeholder="Custo" />
-              <button class="btn btn-secondary" type="button" id="purchase-add-item-btn">Adicionar item</button>
+      <div class="section-stack">
+        <div class="users-layout">
+          <div class="panel">
+            <div class="section-header">
+              <h2>Pedido de compra</h2>
+              <span class="muted">Cadastro mais limpo e organizado</span>
             </div>
 
-            <div style="margin-top:12px;">
+            <form id="purchase-form" class="form-grid">
+              <div class="form-section" style="grid-column:1 / -1;">
+                <div class="form-section-title">
+                  <h3>1. Dados do pedido</h3>
+                  <span>Fornecedor e observações</span>
+                </div>
+                <div class="soft-divider"></div>
+
+                <div class="form-grid">
+                  <label>Fornecedor
+                    <input name="supplierName" list="suppliers-purchase-datalist" required />
+                  </label>
+
+                  <datalist id="suppliers-purchase-datalist">
+                    ${(state.suppliers || [])
+                      .filter((item) => item.active !== false)
+                      .map((item) => `<option value="${escapeHtml(item.name || '')}"></option>`)
+                      .join('')}
+                  </datalist>
+
+                  <label>Previsão de entrega<input name="expectedDate" type="date" /></label>
+                  <label style="grid-column:1 / -1;">Observações<textarea name="notes"></textarea></label>
+                </div>
+              </div>
+
+              <div class="form-section" style="grid-column:1 / -1;">
+                <div class="form-section-title">
+                  <h3>2. Adicionar item</h3>
+                  <span>Monte o pedido item por item</span>
+                </div>
+                <div class="soft-divider"></div>
+
+                <input type="hidden" id="purchase-item-product-id" />
+
+                <div class="form-subgrid">
+                  <input id="purchase-item-product-name" placeholder="Produto" />
+                  <button class="btn btn-secondary" type="button" id="purchase-product-picker-btn">Selecionar produto</button>
+                  <input id="purchase-item-quantity" type="number" min="1" step="1" placeholder="Qtd" />
+                  <input id="purchase-item-cost" type="number" min="0" step="0.01" placeholder="Custo" />
+                </div>
+
+                <div class="form-actions">
+                  <button class="btn btn-secondary" type="button" id="purchase-add-item-btn">Adicionar item</button>
+                </div>
+              </div>
+
+              <div class="form-actions" style="grid-column:1 / -1;">
+                <button class="btn btn-primary" type="submit">Criar pedido de compra</button>
+              </div>
+            </form>
+          </div>
+
+          <div class="section-stack sticky-summary">
+            <div class="card summary-highlight">
+              <div class="section-header">
+                <h3>Resumo do pedido</h3>
+                <span class="badge-soft">${orderItems.length} item(ns)</span>
+              </div>
+
+              <div class="kpi-inline">
+                <div class="compact-card">
+                  <span class="muted">Itens</span>
+                  <strong>${orderItems.length}</strong>
+                </div>
+                <div class="compact-card">
+                  <span class="muted">Quantidade</span>
+                  <strong>${orderItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0)}</strong>
+                </div>
+                <div class="compact-card">
+                  <span class="muted">Total</span>
+                  <strong>${currency(total)}</strong>
+                </div>
+              </div>
+            </div>
+
+            <div class="table-card">
+              <div class="section-header">
+                <h3>Itens do pedido</h3>
+              </div>
               ${renderOrderItems()}
             </div>
-
-            <div class="summary-line total" style="margin-top:12px;">
-              <span>Total do pedido</span>
-              <strong>${currency(getOrderTotal())}</strong>
-            </div>
           </div>
-
-          <div class="form-actions" style="grid-column:1 / -1;">
-            <button class="btn btn-primary" type="submit">Criar pedido de compra</button>
-          </div>
-        </form>
-      </div>
-
-      <div class="table-card" style="margin-top:18px;">
-        <div class="section-header">
-          <h2>Pedidos de compra</h2>
         </div>
 
-        <div class="search-row" style="margin-bottom:14px;">
-          <input id="purchase-filter-supplier" placeholder="Fornecedor" value="${escapeHtml(filters.supplier)}" />
-          <select id="purchase-filter-status">
-            <option value="">Todos</option>
-            <option value="Aberto" ${filters.status === 'Aberto' ? 'selected' : ''}>Aberto</option>
-            <option value="Recebido" ${filters.status === 'Recebido' ? 'selected' : ''}>Recebido</option>
-          </select>
-          <button class="btn btn-secondary" id="purchase-filter-apply">Filtrar</button>
-          <button class="btn btn-secondary" id="purchase-filter-clear">Limpar</button>
-        </div>
+        <div class="table-card">
+          <div class="section-header">
+            <h2>Pedidos de compra</h2>
+            <span class="muted">${rows.length} resultado(s)</span>
+          </div>
 
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Fornecedor</th>
-                <th>Previsão</th>
-                <th>Status</th>
-                <th>Total</th>
-                <th>Itens</th>
-                <th>Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${rows.map((item) => `
+          <div class="search-row" style="margin-bottom:14px;">
+            <input id="purchase-filter-supplier" placeholder="Fornecedor" value="${escapeHtml(filters.supplier)}" />
+            <select id="purchase-filter-status">
+              <option value="">Todos</option>
+              <option value="Aberto" ${filters.status === 'Aberto' ? 'selected' : ''}>Aberto</option>
+              <option value="Recebido" ${filters.status === 'Recebido' ? 'selected' : ''}>Recebido</option>
+            </select>
+            <button class="btn btn-secondary" type="button" id="purchase-filter-apply">Filtrar</button>
+            <button class="btn btn-secondary" type="button" id="purchase-filter-clear">Limpar</button>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
                 <tr>
-                  <td>${escapeHtml(item.supplierName || '-')}</td>
-                  <td>${escapeHtml(item.expectedDate || '-')}</td>
-                  <td>${escapeHtml(item.status || '-')}</td>
-                  <td>${currency(item.totalAmount || 0)}</td>
-                  <td>${(item.items || []).length}</td>
-                  <td>
-                    <div class="inline-row">
-                      ${String(item.status || '') !== 'Recebido'
-                        ? `<button class="btn btn-primary" data-purchase-receive="${item.id}">Receber compra</button>`
-                        : ''}
-                    </div>
-                  </td>
+                  <th>Fornecedor</th>
+                  <th>Previsão</th>
+                  <th>Status</th>
+                  <th>Total</th>
+                  <th>Itens</th>
+                  <th>Ações</th>
                 </tr>
-              `).join('') || '<tr><td colspan="6">Nenhum pedido encontrado.</td></tr>'}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                ${rows.map((item) => `
+                  <tr>
+                    <td>${escapeHtml(item.supplierName || '-')}</td>
+                    <td>${escapeHtml(item.expectedDate || '-')}</td>
+                    <td><span class="tag ${String(item.status || '') === 'Recebido' ? 'success' : 'info'}">${escapeHtml(item.status || '-')}</span></td>
+                    <td>${currency(item.totalAmount || 0)}</td>
+                    <td>${(item.items || []).length}</td>
+                    <td>
+                      <div class="clean-table-actions">
+                        ${String(item.status || '') !== 'Recebido'
+                          ? `<button class="btn btn-primary" type="button" data-purchase-receive="${item.id}">Receber compra</button>`
+                          : '<span class="badge-soft">Finalizado</span>'}
+                      </div>
+                    </td>
+                  </tr>
+                `).join('') || '<tr><td colspan="6">Nenhum pedido encontrado.</td></tr>'}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     `;

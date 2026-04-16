@@ -375,6 +375,61 @@ export function createProductsModule(ctx) {
     render();
   }
 
+  function openProductActions(productId) {
+    const product = state.products.find((item) => item.id === productId);
+
+    if (product?.status === 'inativo') {
+      window.openActionsSheet?.('Ações do produto', [
+        {
+          label: 'Reativar',
+          className: 'btn btn-secondary',
+          onClick: async () => {
+            await updateByPath('products', productId, {
+              deleted: false,
+              status: 'ativo'
+            });
+
+            await auditModule.log({
+              module: 'products',
+              action: 'reactivate',
+              entityType: 'product',
+              entityId: productId,
+              entityLabel: product?.name || '',
+              description: 'Produto reativado.'
+            });
+
+            showToast('Produto reativado.', 'success');
+          }
+        }
+      ]);
+      return;
+    }
+
+    window.openActionsSheet?.('Ações do produto', [
+      {
+        label: 'Inativar',
+        className: 'btn btn-danger',
+        onClick: async () => {
+          await updateByPath('products', productId, {
+            deleted: false,
+            status: 'inativo'
+          });
+
+          await auditModule.log({
+            module: 'products',
+            action: 'inactivate',
+            entityType: 'product',
+            entityId: productId,
+            entityLabel: product?.name || '',
+            description: 'Produto inativado.'
+          });
+
+          showToast('Produto inativado.', 'success');
+        }
+      }
+    ]);
+  }
+
   function renderActionButtons(product) {
     if (product.status === 'inativo') {
       return `
@@ -387,20 +442,13 @@ export function createProductsModule(ctx) {
             aria-label="Editar"
           >✏️</button>
 
-          <details class="actions-menu">
-            <summary
-              class="icon-action-btn"
-              title="Mais ações"
-              aria-label="Mais ações"
-            >⋯</summary>
-            <div class="actions-menu-popover">
-              <button
-                class="btn btn-secondary"
-                type="button"
-                data-product-reactivate="${product.id}"
-              >Reativar</button>
-            </div>
-          </details>
+          <button
+            class="icon-action-btn"
+            type="button"
+            data-product-more="${product.id}"
+            title="Mais ações"
+            aria-label="Mais ações"
+          >⋯</button>
         </div>
       `;
     }
@@ -423,20 +471,13 @@ export function createProductsModule(ctx) {
           aria-label="Movimentar estoque"
         >📦</button>
 
-        <details class="actions-menu">
-          <summary
-            class="icon-action-btn"
-            title="Mais ações"
-            aria-label="Mais ações"
-          >⋯</summary>
-          <div class="actions-menu-popover">
-            <button
-              class="btn btn-danger"
-              type="button"
-              data-product-delete="${product.id}"
-            >Inativar</button>
-          </div>
-        </details>
+        <button
+          class="icon-action-btn"
+          type="button"
+          data-product-more="${product.id}"
+          title="Mais ações"
+          aria-label="Mais ações"
+        >⋯</button>
       </div>
     `;
   }
@@ -449,53 +490,15 @@ export function createProductsModule(ctx) {
       });
     });
 
-    scope.querySelectorAll('[data-product-delete]').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        const product = state.products.find((item) => item.id === btn.dataset.productDelete);
-
-        await updateByPath('products', btn.dataset.productDelete, {
-          deleted: false,
-          status: 'inativo'
-        });
-
-        await auditModule.log({
-          module: 'products',
-          action: 'inactivate',
-          entityType: 'product',
-          entityId: btn.dataset.productDelete,
-          entityLabel: product?.name || '',
-          description: 'Produto inativado.'
-        });
-
-        showToast('Produto inativado.', 'success');
-      });
-    });
-
-    scope.querySelectorAll('[data-product-reactivate]').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        const product = state.products.find((item) => item.id === btn.dataset.productReactivate);
-
-        await updateByPath('products', btn.dataset.productReactivate, {
-          deleted: false,
-          status: 'ativo'
-        });
-
-        await auditModule.log({
-          module: 'products',
-          action: 'reactivate',
-          entityType: 'product',
-          entityId: btn.dataset.productReactivate,
-          entityLabel: product?.name || '',
-          description: 'Produto reativado.'
-        });
-
-        showToast('Produto reativado.', 'success');
-      });
-    });
-
     scope.querySelectorAll('[data-product-move]').forEach((btn) => {
       btn.addEventListener('click', () => {
         inventoryModule.renderMovementModal(btn.dataset.productMove, render);
+      });
+    });
+
+    scope.querySelectorAll('[data-product-more]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        openProductActions(btn.dataset.productMore);
       });
     });
   }

@@ -2148,3 +2148,60 @@ body.theme-light .actions-menu-popover {
     min-width: 160px;
   }
 }
+
+.actions-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1700;
+  background: rgba(0, 0, 0, 0.55);
+  display: grid;
+  place-items: end center;
+  padding: 12px;
+}
+
+.actions-sheet {
+  width: min(100%, 420px);
+  background: linear-gradient(180deg, rgba(20, 33, 56, 0.98), rgba(15, 24, 41, 0.98));
+  border: 1px solid var(--line);
+  border-radius: 20px 20px 14px 14px;
+  box-shadow: var(--shadow);
+  padding: 14px;
+}
+
+body.theme-light .actions-sheet {
+  background: linear-gradient(180deg, #ffffff, #f7f9fd);
+}
+
+.actions-sheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.actions-sheet-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.actions-sheet-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.actions-sheet-actions .btn {
+  width: 100%;
+  justify-content: center;
+}
+
+@media (min-width: 921px) {
+  .actions-sheet-backdrop {
+    place-items: center;
+  }
+
+  .actions-sheet {
+    border-radius: 18px;
+  }
+}

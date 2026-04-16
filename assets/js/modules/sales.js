@@ -659,6 +659,27 @@ ${(sale.items || []).map((item) => `- ${item.name} | Qtd: ${item.quantity} | Uni
     });
   }
 
+  function renderBarcodeActionButton() {
+    return `
+      <button
+        class="icon-btn"
+        id="camera-scan-btn"
+        type="button"
+        title="Ler código de barras"
+        aria-label="Ler código de barras"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M4 7v10"></path>
+          <path d="M7 7v10"></path>
+          <path d="M10 7v10"></path>
+          <path d="M14 7v10"></path>
+          <path d="M17 7v10"></path>
+          <path d="M20 7v10"></path>
+        </svg>
+      </button>
+    `;
+  }
+
   function render() {
     const cartTotal = calculateCartTotal();
     const mobile = isMobileDevice();
@@ -694,15 +715,17 @@ ${(sale.items || []).map((item) => `- ${item.name} | Qtd: ${item.quantity} | Uni
               </div>
 
               <div class="search-row">
-                <input id="sale-product-search" placeholder="Pesquisar ou bipar código de barras" autocomplete="off" />
+                <div class="input-with-action" style="flex:1 1 240px;">
+                  <input id="sale-product-search" placeholder="Pesquisar ou bipar código de barras" autocomplete="off" />
+                  ${renderBarcodeActionButton()}
+                </div>
                 <button id="sale-product-search-btn" class="btn btn-secondary" type="button">Buscar</button>
-                ${mobile ? '<button id="camera-scan-btn" class="btn btn-primary" type="button">Ler código de barras</button>' : ''}
               </div>
 
               <div class="auth-hint" style="margin-top:10px;">
                 ${mobile
-                  ? 'No celular, toque em "Ler código de barras" para abrir a câmera em modal.'
-                  : 'No computador: F2 busca, F4 limpa carrinho, F9 finaliza venda.'}
+                  ? 'No celular, toque no ícone ao lado do campo para abrir a câmera.'
+                  : 'No computador, toque no ícone para focar o campo e use a leitora USB.'}
               </div>
 
               <div id="sale-search-results" class="stack-list slim-list" style="margin-top:14px;"></div>
@@ -815,10 +838,7 @@ ${(sale.items || []).map((item) => `- ${item.name} | Qtd: ${item.quantity} | Uni
     searchInput.addEventListener('input', handleSalesSearchInputAutoScan);
     tabEls.sales.querySelector('#sale-form').addEventListener('submit', handleSaleSubmit);
     tabEls.sales.querySelector('#clear-cart-btn').addEventListener('click', clearCartWithFeedback);
-
-    if (mobile) {
-      tabEls.sales.querySelector('#camera-scan-btn').addEventListener('click', handleBarcodeReadAction);
-    }
+    tabEls.sales.querySelector('#camera-scan-btn')?.addEventListener('click', handleBarcodeReadAction);
 
     tabEls.sales.querySelector('#sale-client-picker-btn')?.addEventListener('click', () => {
       const modalRoot = document.getElementById('modal-root');

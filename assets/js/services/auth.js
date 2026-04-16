@@ -20,7 +20,21 @@ import {
   serverTimestamp
 } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js';
 
-import { auth, db } from './firebase-config.js';
+import {
+  initializeApp,
+  deleteApp
+} from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js';
+
+import {
+  getAuth
+} from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js';
+
+import {
+  auth,
+  db,
+  firebaseConfig
+} from './firebase-config.js';
+
 import {
   ensurePermissionsByRole,
   canEditTargetUser,
@@ -39,11 +53,7 @@ async function getUserProfile(uid) {
     return null;
   }
 
-  return {
-    id: snap.id,
-    uid: snap.id,
-    ...snap.data()
-  };
+  return { id: snap.id, uid: snap.id, ...snap.data() };
 }
 
 async function getUserById(userId) {
@@ -54,58 +64,7 @@ async function getUserById(userId) {
     throw new Error('Usuário não encontrado.');
   }
 
-  return {
-    id: snap.id,
-    uid: snap.id,
-    ...snap.data()
-  };
-}
-
-export async function login(email, password) {
-  const credential = await signInWithEmailAndPassword(auth, email, password);
-  const profile = await getUserProfile(credential.user.uid);
-
-  if (!profile) {
-    await signOut(auth);
-    throw new Error('Usuário sem cadastro interno.');
-  }
-
-  if (profile.deleted === true || profile.active === false) {
-    await signOut(auth);
-    throw new Error('Usuário inativo. Acesso bloqueado.');
-  }
-
-  return {
-    user: credential.user,
-    profile
-  };
-}
-
-export function watchAuth(callback) {
-  return onAuthStateChanged(auth, async (user) => {
-    if (!user) {
-      callback(null);
-      return;
-    }
-
-    const profile = await getUserProfile(user.uid);
-
-    if (!profile || profile.deleted === true || profile.active === false) {
-      await signOut(auth);
-      callback(null);
-      return;
-    }
-
-    callback({
-      ...profile,
-      uid: user.uid,
-      email: user.email
-    });
-  });
-}
-
-export async function logout() {
-  await signOut(auth);
+  return { id: snap.id, uid: snap.id, ...snap.data() };
 }
 
 function normalizeUserPayload(payload, actor) {
@@ -132,6 +91,100 @@ function normalizeUserPayload(payload, actor) {
   };
 }
 
+function buildSecondaryAppName() {
+  return `gestao-user-provision-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+async function createUserInSecondaryAuth(email, password) {
+  const secondaryApp = initializeApp(firebaseConfig, buildSecondaryAppName());
+  const secondaryAuth = getAuth(secondaryApp);
+
+  try {
+    const credential = await createUserWithEmailAndPassword(secondaryAuth, email, password);
+    return {
+      uid: credential.user.uid,
+      email: credential.user.email,
+      secondaryAuth,
+      secondaryApp
+    };
+  } catch (error) {
+    try {
+      await deleteApp(secondaryApp);
+    } catch (cleanupError) {
+      console.error(cleanupError);
+    }
+    throw error;
+  }
+}
+
+async function cleanupSecondaryAuth(secondaryAuth, secondaryApp) {
+  try {
+    if (secondaryAuth?.currentUser) {
+      await signOut(secondaryAuth);
+    }
+  } catch (error) {
+    console.error(error);
+  }
+
+  try {
+    if (secondaryApp) {
+      await deleteApp(secondaryApp);
+    }
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+export async function login(email, password) {
+  const credential = await signInWithEmailAndPassword(auth, email, password);
+  const profile = await getUserProfile(credential.user.uid);
+
+  if (!profile) {
+    await signOut(auth);
+    throw new Error('Usuário sem cadastro interno.');
+  }
+
+  if (profile.deleted === true || profile.active === false) {
+    await signOut(auth);
+    throw new Error('Usuário inativo. Acesso bloqueado.');
+  }
+
+  return { user: credential.user, profile };
+}
+
+export function watchAuth(callback) {
+  return onAuthStateChanged(auth, async (user) => {
+    if (!user) {
+      callback(null);
+      return;
+    }
+
+    try {
+      const profile = await getUserProfile(user.uid);
+
+      if (!profile || profile.deleted === true || profile.active === false) {
+        await signOut(auth);
+        callback(null);
+        return;
+      }
+
+      callback({
+        ...profile,
+        uid: user.uid,
+        email: user.email
+      });
+    } catch (error) {
+      console.error(error);
+      await signOut(auth);
+      callback(null);
+    }
+  });
+}
+
+export async function logout() {
+  await signOut(auth);
+}
+
 export async function createManagedUser(currentUser, payload) {
   if (!isAdmin(currentUser)) {
     throw new Error('Sem permissão para criar usuários.');
@@ -143,26 +196,35 @@ export async function createManagedUser(currentUser, payload) {
   }
 
   const data = normalizeUserPayload(payload, currentUser);
-  const credential = await createUserWithEmailAndPassword(auth, data.email, password);
 
-  await setDoc(doc(db, 'users', credential.user.uid), {
-    fullName: data.fullName,
-    username: data.username,
-    email: data.email,
-    role: data.role,
-    accessLevel: data.accessLevel,
-    permissions: data.permissions,
-    active: data.active,
-    deleted: false,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp()
-  });
+  let provisioned = null;
 
-  return {
-    id: credential.user.uid,
-    uid: credential.user.uid,
-    ...data
-  };
+  try {
+    provisioned = await createUserInSecondaryAuth(data.email, password);
+
+    await setDoc(doc(db, 'users', provisioned.uid), {
+      fullName: data.fullName,
+      username: data.username,
+      email: data.email,
+      role: data.role,
+      accessLevel: data.accessLevel,
+      permissions: data.permissions,
+      active: data.active,
+      deleted: false,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+
+    return {
+      id: provisioned.uid,
+      uid: provisioned.uid,
+      ...data
+    };
+  } finally {
+    if (provisioned) {
+      await cleanupSecondaryAuth(provisioned.secondaryAuth, provisioned.secondaryApp);
+    }
+  }
 }
 
 export async function updateManagedUser(currentUser, targetUserId, payload) {
@@ -220,11 +282,7 @@ export async function listUsers() {
   const snap = await getDocs(usersRef);
 
   return snap.docs
-    .map((row) => ({
-      id: row.id,
-      uid: row.id,
-      ...row.data()
-    }))
+    .map((row) => ({ id: row.id, uid: row.id, ...row.data() }))
     .sort((a, b) => String(a.fullName || '').localeCompare(String(b.fullName || '')));
 }
 
@@ -249,10 +307,5 @@ export async function findUserByUsername(username) {
   }
 
   const docSnap = snap.docs[0];
-
-  return {
-    id: docSnap.id,
-    uid: docSnap.id,
-    ...docSnap.data()
-  };
+  return { id: docSnap.id, uid: docSnap.id, ...docSnap.data() };
 }

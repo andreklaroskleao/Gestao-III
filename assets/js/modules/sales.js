@@ -18,12 +18,16 @@ export function createSalesModule(ctx) {
   let streamRef = null;
   let scanTimer = null;
   let barcodeTimer = null;
+  let zxingReader = null;
+  let cameraRunning = false;
+
   let saleFilters = {
     customer: '',
     paymentMethod: '',
     dateFrom: '',
     dateTo: ''
   };
+
   let keyboardBound = false;
 
   function isMobileDevice() {
@@ -126,24 +130,36 @@ export function createSalesModule(ctx) {
     bindCartButtons();
   }
 
+  function handleNotFoundBarcode(value) {
+    const input = tabEls.sales.querySelector('#sale-product-search');
+    if (input) {
+      input.value = value || '';
+      input.focus();
+      input.select?.();
+    }
+
+    handleSaleSearch();
+    showToast('Produto não cadastrado.', 'error');
+  }
+
   function tryAddProductByBarcode(barcode, showWarning = true) {
-    const product = findProductByBarcode(barcode);
+    const normalized = String(barcode || '').trim();
+    const product = findProductByBarcode(normalized);
 
     if (!product) {
       if (showWarning) {
-        showToast('Produto não cadastrado.', 'error');
+        handleNotFoundBarcode(normalized);
       }
-      handleSaleSearch();
       return false;
     }
 
     addProductToCart(product.id);
 
-    const searchInput = tabEls.sales.querySelector('#sale-product-search');
-    if (searchInput) {
-      searchInput.value = product.barcode || '';
-      searchInput.focus();
-      searchInput.select();
+    const input = tabEls.sales.querySelector('#sale-product-search');
+    if (input) {
+      input.value = product.barcode || '';
+      input.focus();
+      input.select?.();
     }
 
     showToast('Produto adicionado à venda.', 'success');
@@ -200,90 +216,197 @@ export function createSalesModule(ctx) {
   async function handleBarcodeReadAction() {
     if (!isMobileDevice()) {
       focusSearchInput();
-      showToast('Use o leitor USB no campo de busca.', 'info');
+      showToast('No desktop, use o leitor USB no campo de busca.', 'info');
       return;
     }
 
     await startCameraScan();
   }
 
+  function getScannerElements() {
+    return {
+      scannerCard: document.getElementById('scanner-card'),
+      video: document.getElementById('barcode-video'),
+      status: document.getElementById('barcode-status')
+    };
+  }
+
+  function setScannerStatus(message, type = 'info') {
+    const { status } = getScannerElements();
+    if (!status) return;
+
+    status.textContent = message;
+    status.dataset.type = type;
+  }
+
+  function showScannerCard() {
+    const { scannerCard } = getScannerElements();
+    if (scannerCard) {
+      scannerCard.style.display = 'block';
+    }
+  }
+
+  function hideScannerCard() {
+    const { scannerCard } = getScannerElements();
+    if (scannerCard) {
+      scannerCard.style.display = 'none';
+    }
+  }
+
   async function startCameraScan() {
     if (!isMobileDevice()) return;
+    if (cameraRunning) return;
 
-    const scannerCard = document.getElementById('scanner-card');
-    const video = document.getElementById('barcode-video');
-
-    if (!scannerCard || !video) return;
-
-    if (!('BarcodeDetector' in window)) {
-      showToast('Leitura por câmera não disponível neste navegador.', 'error');
-      return;
-    }
-
-    if (!navigator.mediaDevices?.getUserMedia) {
-      showToast('A câmera não está disponível neste dispositivo.', 'error');
-      return;
-    }
-
-    scannerCard.style.display = 'block';
+    showScannerCard();
+    setScannerStatus('Abrindo câmera traseira...', 'info');
     stopCameraScan(false);
+
+    try {
+      if ('BarcodeDetector' in window) {
+        await startBarcodeDetectorScan();
+        return;
+      }
+
+      await startZxingScan();
+    } catch (error) {
+      console.error('Erro ao iniciar câmera:', error);
+
+      try {
+        await startZxingScan();
+      } catch (fallbackError) {
+        console.error('Erro no fallback ZXing:', fallbackError);
+        stopCameraScan(true);
+        showToast('Não foi possível iniciar a leitura pela câmera.', 'error');
+      }
+    }
+  }
+
+  async function startBarcodeDetectorScan() {
+    const { video } = getScannerElements();
+
+    if (!navigator.mediaDevices?.getUserMedia || !video) {
+      throw new Error('Câmera indisponível.');
+    }
 
     streamRef = await navigator.mediaDevices.getUserMedia({
       video: {
-        facingMode: 'environment'
-      }
+        facingMode: { ideal: 'environment' }
+      },
+      audio: false
     });
 
     video.srcObject = streamRef;
+    await video.play();
 
     const detector = new BarcodeDetector({
-      formats: ['ean_13', 'ean_8', 'code_128', 'qr_code', 'upc_a', 'upc_e']
+      formats: ['ean_13', 'ean_8', 'code_128', 'upc_a', 'upc_e', 'code_39', 'itf']
     });
+
+    cameraRunning = true;
+    setScannerStatus('Aponte a câmera para o código de barras.', 'info');
 
     scanTimer = window.setInterval(async () => {
       try {
         const codes = await detector.detect(video);
         if (!codes.length) return;
 
-        const value = codes[0].rawValue;
-        const match = findProductByBarcode(value);
+        const value = String(codes[0].rawValue || '').trim();
+        if (!value) return;
 
-        if (match) {
-          addProductToCart(match.id);
+        const found = tryAddProductByBarcode(value, false);
 
-          const input = tabEls.sales.querySelector('#sale-product-search');
-          if (input) {
-            input.value = value;
-          }
-
-          showToast('Produto adicionado à venda.', 'success');
+        if (found) {
+          setScannerStatus(`Código lido: ${value}`, 'success');
           stopCameraScan(true);
         } else {
-          showToast('Produto não cadastrado.', 'error');
+          setScannerStatus(`Código não cadastrado: ${value}`, 'error');
           stopCameraScan(true);
+          handleNotFoundBarcode(value);
         }
       } catch (error) {
-        console.error(error);
+        console.error('Erro ao detectar código:', error);
       }
-    }, 850);
+    }, 600);
+  }
+
+  async function startZxingScan() {
+    const { video } = getScannerElements();
+
+    if (!window.ZXing || !video) {
+      throw new Error('ZXing não disponível.');
+    }
+
+    const ZXingLib = window.ZXing;
+    zxingReader = new ZXingLib.BrowserMultiFormatReader();
+
+    cameraRunning = true;
+    setScannerStatus('Aponte a câmera para o código de barras.', 'info');
+
+    await zxingReader.decodeFromConstraints(
+      {
+        video: {
+          facingMode: { ideal: 'environment' }
+        }
+      },
+      video,
+      (result, error) => {
+        if (result) {
+          const value = String(result.text || '').trim();
+          if (!value) return;
+
+          const found = tryAddProductByBarcode(value, false);
+
+          if (found) {
+            setScannerStatus(`Código lido: ${value}`, 'success');
+            stopCameraScan(true);
+          } else {
+            setScannerStatus(`Código não cadastrado: ${value}`, 'error');
+            stopCameraScan(true);
+            handleNotFoundBarcode(value);
+          }
+        }
+
+        if (error && error.name !== 'NotFoundException') {
+          console.error('ZXing erro:', error);
+        }
+      }
+    );
   }
 
   function stopCameraScan(hideCard = true) {
     if (scanTimer) {
       window.clearInterval(scanTimer);
+      scanTimer = null;
     }
-    scanTimer = null;
+
+    if (zxingReader) {
+      try {
+        zxingReader.reset();
+      } catch (error) {
+        console.error(error);
+      }
+      zxingReader = null;
+    }
 
     if (streamRef) {
       streamRef.getTracks().forEach((track) => track.stop());
+      streamRef = null;
     }
-    streamRef = null;
+
+    const { video } = getScannerElements();
+    if (video) {
+      try {
+        video.pause();
+      } catch (error) {
+        console.error(error);
+      }
+      video.srcObject = null;
+    }
+
+    cameraRunning = false;
 
     if (hideCard) {
-      const scannerCard = document.getElementById('scanner-card');
-      if (scannerCard) {
-        scannerCard.style.display = 'none';
-      }
+      hideScannerCard();
     }
   }
 
@@ -510,7 +633,7 @@ ${(sale.items || []).map((item) => `- ${item.name} | Qtd: ${item.quantity} | Uni
           </div>
 
           <div class="auth-hint" style="margin-top:10px;">
-            ${mobile ? 'No celular, você pode usar a câmera para leitura.' : 'No computador: F2 busca, F4 limpa carrinho, F9 finaliza venda.'}
+            ${mobile ? 'No celular, use a câmera traseira para leitura. Se o código não existir, o sistema avisará.' : 'No computador: F2 busca, F4 limpa carrinho, F9 finaliza venda.'}
           </div>
 
           <div id="sale-search-results" class="stack-list" style="margin-top:14px;"></div>
@@ -519,8 +642,8 @@ ${(sale.items || []).map((item) => `- ${item.name} | Qtd: ${item.quantity} | Uni
             <div class="scanner-card" id="scanner-card" style="margin-top:14px; display:none;">
               <h3>Leitura de código de barras</h3>
               <video id="barcode-video" class="video-preview" autoplay muted playsinline></video>
+              <div id="barcode-status" class="auth-hint" style="margin-top:10px;">Aguardando câmera...</div>
               <div class="inline-row" style="margin-top:10px;">
-                <span class="muted">Use a câmera traseira para ler o código.</span>
                 <button id="stop-scan-btn" class="btn btn-secondary">Parar leitura</button>
               </div>
             </div>

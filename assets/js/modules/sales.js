@@ -65,9 +65,9 @@ export function createSalesModule(ctx) {
           <span>Total: ${currency(item.salePrice * item.quantity)}</span>
         </div>
         <div class="cart-actions">
-          <button class="btn btn-secondary" data-cart-decrease="${item.id}">-1</button>
-          <button class="btn btn-secondary" data-cart-increase="${item.id}">+1</button>
-          <button class="btn btn-danger" data-cart-remove="${item.id}">Remover</button>
+          <button class="btn btn-secondary" type="button" data-cart-decrease="${item.id}">-1</button>
+          <button class="btn btn-secondary" type="button" data-cart-increase="${item.id}">+1</button>
+          <button class="btn btn-danger" type="button" data-cart-remove="${item.id}">Remover</button>
         </div>
       </div>
     `).join('');
@@ -127,7 +127,7 @@ export function createSalesModule(ctx) {
     }
 
     render();
-    bindCartButtons();
+    showToast('Produto adicionado à venda.', 'success');
   }
 
   function handleNotFoundBarcode(value) {
@@ -162,7 +162,6 @@ export function createSalesModule(ctx) {
       input.select?.();
     }
 
-    showToast('Produto adicionado à venda.', 'success');
     return true;
   }
 
@@ -179,13 +178,15 @@ export function createSalesModule(ctx) {
         <strong>${escapeHtml(product.name)}</strong>
         <span>${escapeHtml(product.barcode || 'Sem código')} · Estoque: ${product.quantity}</span>
         <div class="inline-row" style="margin-top:8px;">
-          <button class="btn btn-primary" data-add-cart="${product.id}">Adicionar</button>
+          <button class="btn btn-primary" type="button" data-add-cart="${product.id}">Adicionar</button>
         </div>
       </div>
     `).join('') || '<div class="empty-state">Nenhum produto encontrado.</div>';
 
     resultsEl.querySelectorAll('[data-add-cart]').forEach((btn) => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
         addProductToCart(btn.dataset.addCart);
       });
     });
@@ -412,32 +413,38 @@ export function createSalesModule(ctx) {
 
   function bindCartButtons() {
     tabEls.sales.querySelectorAll('[data-cart-decrease]').forEach((btn) => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+
         const item = state.cart.find((row) => row.id === btn.dataset.cartDecrease);
         if (!item) return;
 
         item.quantity = Math.max(1, item.quantity - 1);
         render();
-        bindCartButtons();
       });
     });
 
     tabEls.sales.querySelectorAll('[data-cart-increase]').forEach((btn) => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+
         const item = state.cart.find((row) => row.id === btn.dataset.cartIncrease);
         if (!item) return;
 
         item.quantity += 1;
         render();
-        bindCartButtons();
       });
     });
 
     tabEls.sales.querySelectorAll('[data-cart-remove]').forEach((btn) => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+
         state.cart = state.cart.filter((row) => row.id !== btn.dataset.cartRemove);
         render();
-        bindCartButtons();
       });
     });
   }
@@ -628,8 +635,8 @@ ${(sale.items || []).map((item) => `- ${item.name} | Qtd: ${item.quantity} | Uni
 
           <div class="search-row">
             <input id="sale-product-search" placeholder="Pesquisar ou bipar código de barras" autocomplete="off" />
-            <button id="sale-product-search-btn" class="btn btn-secondary">Buscar</button>
-            ${mobile ? '<button id="camera-scan-btn" class="btn btn-primary">Ler código de barras</button>' : ''}
+            <button id="sale-product-search-btn" class="btn btn-secondary" type="button">Buscar</button>
+            ${mobile ? '<button id="camera-scan-btn" class="btn btn-primary" type="button">Ler código de barras</button>' : ''}
           </div>
 
           <div class="auth-hint" style="margin-top:10px;">
@@ -644,7 +651,7 @@ ${(sale.items || []).map((item) => `- ${item.name} | Qtd: ${item.quantity} | Uni
               <video id="barcode-video" class="video-preview" autoplay muted playsinline></video>
               <div id="barcode-status" class="auth-hint" style="margin-top:10px;">Aguardando câmera...</div>
               <div class="inline-row" style="margin-top:10px;">
-                <button id="stop-scan-btn" class="btn btn-secondary">Parar leitura</button>
+                <button id="stop-scan-btn" class="btn btn-secondary" type="button">Parar leitura</button>
               </div>
             </div>
           ` : ''}
@@ -705,8 +712,8 @@ ${(sale.items || []).map((item) => `- ${item.name} | Qtd: ${item.quantity} | Uni
           </select>
           <input id="sales-filter-date-from" type="date" value="${saleFilters.dateFrom}" />
           <input id="sales-filter-date-to" type="date" value="${saleFilters.dateTo}" />
-          <button class="btn btn-secondary" id="sales-filter-apply">Filtrar</button>
-          <button class="btn btn-secondary" id="sales-filter-clear">Limpar</button>
+          <button class="btn btn-secondary" type="button" id="sales-filter-apply">Filtrar</button>
+          <button class="btn btn-secondary" type="button" id="sales-filter-clear">Limpar</button>
         </div>
 
         <div class="table-wrap">
@@ -731,8 +738,8 @@ ${(sale.items || []).map((item) => `- ${item.name} | Qtd: ${item.quantity} | Uni
                   <td>${sale.items?.length || 0}</td>
                   <td>
                     <div class="inline-row">
-                      <button class="btn btn-secondary" data-sale-view="${sale.id}">Detalhes</button>
-                      <button class="btn btn-primary" data-sale-reprint="${sale.id}">Reimprimir</button>
+                      <button class="btn btn-secondary" type="button" data-sale-view="${sale.id}">Detalhes</button>
+                      <button class="btn btn-primary" type="button" data-sale-reprint="${sale.id}">Reimprimir</button>
                     </div>
                   </td>
                 </tr>
@@ -767,7 +774,7 @@ ${(sale.items || []).map((item) => `- ${item.name} | Qtd: ${item.quantity} | Uni
           <div class="modal-card">
             <div class="section-header">
               <h2>Selecionar cliente</h2>
-              <button class="btn btn-secondary" id="sale-client-modal-close">Fechar</button>
+              <button class="btn btn-secondary" type="button" id="sale-client-modal-close">Fechar</button>
             </div>
             <div id="sale-client-picker-host"></div>
           </div>

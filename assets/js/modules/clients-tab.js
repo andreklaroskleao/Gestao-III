@@ -108,93 +108,139 @@ export function createClientsTabModule(ctx) {
 
     const editing = (state.clients || []).find((item) => item.id === state.editingClientId) || null;
     const rows = getFilteredClients();
+    const activeCount = (state.clients || []).filter((item) => item.active !== false).length;
+    const inactiveCount = (state.clients || []).filter((item) => item.active === false).length;
 
     tabEls.clients.innerHTML = `
-      <div class="users-layout">
-        <div class="panel">
-          <div class="section-header">
-            <h2>${editing ? 'Editar cliente' : 'Cadastrar cliente'}</h2>
+      <div class="section-stack">
+        <div class="cards-grid">
+          <div class="metric-card">
+            <span>Total de clientes</span>
+            <strong>${(state.clients || []).length}</strong>
           </div>
+          <div class="metric-card">
+            <span>Ativos</span>
+            <strong>${activeCount}</strong>
+          </div>
+          <div class="metric-card">
+            <span>Inativos</span>
+            <strong>${inactiveCount}</strong>
+          </div>
+          <div class="metric-card">
+            <span>Filtrados</span>
+            <strong>${rows.length}</strong>
+          </div>
+        </div>
 
-          <form id="client-form" class="form-grid">
-            <label>Nome<input name="name" required /></label>
-            <label>Telefone<input name="phone" /></label>
-            <label>Endereço<input name="address" /></label>
-            <label>E-mail<input name="email" type="email" /></label>
-            <label>Status
-              <select name="active">
-                <option value="true">Ativo</option>
-                <option value="false">Inativo</option>
-              </select>
-            </label>
-            <label style="grid-column:1 / -1;">Observações<textarea name="notes"></textarea></label>
-
-            <div class="form-actions" style="grid-column:1 / -1;">
-              <button class="btn btn-primary" type="submit">${editing ? 'Salvar cliente' : 'Cadastrar cliente'}</button>
-              <button class="btn btn-secondary" type="button" id="client-reset-btn">Limpar</button>
+        <div class="users-layout">
+          <div class="panel">
+            <div class="section-header">
+              <h2>${editing ? 'Editar cliente' : 'Cadastrar cliente'}</h2>
+              <span class="muted">${editing ? 'Atualize os dados do cliente.' : 'Cadastro rápido e organizado.'}</span>
             </div>
-          </form>
+
+            <form id="client-form" class="form-grid">
+              <div class="form-section" style="grid-column:1 / -1;">
+                <div class="form-section-title">
+                  <h3>1. Identificação</h3>
+                  <span>Dados principais</span>
+                </div>
+                <div class="soft-divider"></div>
+
+                <div class="form-grid">
+                  <label>Nome<input name="name" required /></label>
+                  <label>Telefone<input name="phone" /></label>
+                  <label>Endereço<input name="address" /></label>
+                  <label>E-mail<input name="email" type="email" /></label>
+                  <label>Status
+                    <select name="active">
+                      <option value="true">Ativo</option>
+                      <option value="false">Inativo</option>
+                    </select>
+                  </label>
+                </div>
+              </div>
+
+              <div class="form-section" style="grid-column:1 / -1;">
+                <div class="form-section-title">
+                  <h3>2. Observações</h3>
+                  <span>Anotações gerais</span>
+                </div>
+                <div class="soft-divider"></div>
+
+                <label style="grid-column:1 / -1;">Observações<textarea name="notes"></textarea></label>
+              </div>
+
+              <div class="form-actions" style="grid-column:1 / -1;">
+                <button class="btn btn-primary" type="submit">${editing ? 'Salvar cliente' : 'Cadastrar cliente'}</button>
+                <button class="btn btn-secondary" type="button" id="client-reset-btn">Limpar</button>
+              </div>
+            </form>
+          </div>
+
+          <div class="section-stack">
+            <div class="table-card">
+              <div class="section-header">
+                <h2>Clientes</h2>
+                <span class="muted">${rows.length} resultado(s)</span>
+              </div>
+
+              <div class="search-row" style="margin-bottom:14px;">
+                <input id="client-filter-term" placeholder="Buscar por nome, telefone, e-mail ou endereço" value="${escapeHtml(filters.term)}" />
+                <select id="client-filter-status">
+                  <option value="">Todos</option>
+                  <option value="ativo" ${filters.status === 'ativo' ? 'selected' : ''}>Ativo</option>
+                  <option value="inativo" ${filters.status === 'inativo' ? 'selected' : ''}>Inativo</option>
+                </select>
+                <button class="btn btn-secondary" type="button" id="client-filter-apply">Filtrar</button>
+                <button class="btn btn-secondary" type="button" id="client-filter-clear">Limpar</button>
+              </div>
+
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Nome</th>
+                      <th>Telefone</th>
+                      <th>E-mail</th>
+                      <th>Status</th>
+                      <th>Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${rows.map((client) => `
+                      <tr>
+                        <td>${escapeHtml(client.name || '-')}</td>
+                        <td>${escapeHtml(client.phone || '-')}</td>
+                        <td>${escapeHtml(client.email || '-')}</td>
+                        <td><span class="tag ${client.active === false ? 'warning' : 'success'}">${client.active === false ? 'Inativo' : 'Ativo'}</span></td>
+                        <td>
+                          <div class="clean-table-actions">
+                            <button class="btn btn-secondary" type="button" data-client-edit="${client.id}">Editar</button>
+                            <button class="btn btn-secondary" type="button" data-client-history="${client.id}">Histórico</button>
+                            <button class="btn btn-danger" type="button" data-client-inactivate="${client.id}">Inativar</button>
+                          </div>
+                        </td>
+                      </tr>
+                    `).join('') || '<tr><td colspan="5">Nenhum cliente encontrado.</td></tr>'}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="table-card">
+              <div class="section-header">
+                <h2>Histórico do cliente</h2>
+              </div>
+              <div id="client-history-host">
+                <div class="empty-state">Selecione um cliente para visualizar o histórico.</div>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <div class="table-card">
-          <div class="section-header">
-            <h2>Clientes</h2>
-          </div>
-
-          <div class="search-row" style="margin-bottom:14px;">
-            <input id="client-filter-term" placeholder="Buscar por nome, telefone, e-mail ou endereço" value="${escapeHtml(filters.term)}" />
-            <select id="client-filter-status">
-              <option value="">Todos</option>
-              <option value="ativo" ${filters.status === 'ativo' ? 'selected' : ''}>Ativo</option>
-              <option value="inativo" ${filters.status === 'inativo' ? 'selected' : ''}>Inativo</option>
-            </select>
-            <button class="btn btn-secondary" id="client-filter-apply">Filtrar</button>
-            <button class="btn btn-secondary" id="client-filter-clear">Limpar</button>
-          </div>
-
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Nome</th>
-                  <th>Telefone</th>
-                  <th>E-mail</th>
-                  <th>Status</th>
-                  <th>Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${rows.map((client) => `
-                  <tr>
-                    <td>${escapeHtml(client.name || '-')}</td>
-                    <td>${escapeHtml(client.phone || '-')}</td>
-                    <td>${escapeHtml(client.email || '-')}</td>
-                    <td><span class="tag ${client.active === false ? 'warning' : 'success'}">${client.active === false ? 'Inativo' : 'Ativo'}</span></td>
-                    <td>
-                      <div class="inline-row">
-                        <button class="btn btn-secondary" data-client-edit="${client.id}">Editar</button>
-                        <button class="btn btn-secondary" data-client-history="${client.id}">Histórico</button>
-                        <button class="btn btn-danger" data-client-inactivate="${client.id}">Inativar</button>
-                      </div>
-                    </td>
-                  </tr>
-                `).join('') || '<tr><td colspan="5">Nenhum cliente encontrado.</td></tr>'}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <div id="accounts-module-host"></div>
       </div>
-
-      <div class="table-card" style="margin-top:18px;">
-        <div class="section-header">
-          <h2>Histórico do cliente</h2>
-        </div>
-        <div id="client-history-host">
-          <div class="empty-state">Selecione um cliente para visualizar o histórico.</div>
-        </div>
-      </div>
-
-      <div id="accounts-module-host" style="margin-top:18px;"></div>
     `;
 
     const form = tabEls.clients.querySelector('#client-form');

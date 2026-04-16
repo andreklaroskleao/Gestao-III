@@ -16,7 +16,13 @@ export function createClientsTabModule(ctx) {
 
   function getFilteredClients() {
     return (state.clients || []).filter((client) => {
-      const haystack = [client.name, client.phone, client.email, client.address].join(' ').toLowerCase();
+      const haystack = [
+        client.name,
+        client.phone,
+        client.email,
+        client.address
+      ].join(' ').toLowerCase();
+
       const activeStatus = client.active === false ? 'inativo' : 'ativo';
 
       return (!filters.term || haystack.includes(filters.term.toLowerCase()))
@@ -139,7 +145,7 @@ export function createClientsTabModule(ctx) {
               <span class="muted">${editing ? 'Atualize os dados do cliente.' : 'Cadastro rápido e organizado.'}</span>
             </div>
 
-            <form id="client-form" class="form-grid">
+            <form id="client-form" class="form-grid mobile-optimized">
               <div class="form-section" style="grid-column:1 / -1;">
                 <div class="form-section-title">
                   <h3>1. Identificação</h3>
@@ -239,7 +245,13 @@ export function createClientsTabModule(ctx) {
           </div>
         </div>
 
-        <div id="accounts-module-host"></div>
+        <div class="table-card">
+          <div class="section-header">
+            <h2>Contas do cliente</h2>
+            <span class="muted">Financeiro vinculado</span>
+          </div>
+          <div id="accounts-module-host"></div>
+        </div>
       </div>
     `;
 

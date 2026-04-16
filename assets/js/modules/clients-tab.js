@@ -1,4 +1,4 @@
-import { escapeHtml, renderBlocked } from './ui.js';
+import { escapeHtml, renderBlocked, showToast } from './ui.js';
 
 export function createClientsTabModule(ctx) {
   const {
@@ -30,7 +30,13 @@ export function createClientsTabModule(ctx) {
     });
   }
 
+  function getEditingClient() {
+    return (state.clients || []).find((item) => item.id === state.editingClientId) || null;
+  }
+
   function fillForm(form, client) {
+    if (!form) return;
+
     form.elements.name.value = client?.name || '';
     form.elements.phone.value = client?.phone || '';
     form.elements.address.value = client?.address || '';
@@ -39,11 +45,58 @@ export function createClientsTabModule(ctx) {
     form.elements.active.value = String(client?.active !== false);
   }
 
+  function getSummary() {
+    const clients = state.clients || [];
+    return {
+      total: clients.length,
+      active: clients.filter((item) => item.active !== false).length,
+      inactive: clients.filter((item) => item.active === false).length,
+      filtered: getFilteredClients().length
+    };
+  }
+
   function renderHistory(clientId) {
     const historyHost = tabEls.clients.querySelector('#client-history-host');
     if (!historyHost) return;
 
     historyHost.innerHTML = clientsModule.renderClientHistory(clientId);
+  }
+
+  function renderClientActions(client) {
+    return `
+      <div class="actions-inline-compact">
+        <button
+          class="icon-action-btn"
+          type="button"
+          data-client-edit="${client.id}"
+          title="Editar"
+          aria-label="Editar"
+        >✏️</button>
+
+        <button
+          class="icon-action-btn info"
+          type="button"
+          data-client-history="${client.id}"
+          title="Histórico"
+          aria-label="Histórico"
+        >👁️</button>
+
+        <details class="actions-menu">
+          <summary
+            class="icon-action-btn"
+            title="Mais ações"
+            aria-label="Mais ações"
+          >⋯</summary>
+          <div class="actions-menu-popover">
+            <button
+              class="btn btn-danger"
+              type="button"
+              data-client-inactivate="${client.id}"
+            >Inativar</button>
+          </div>
+        </details>
+      </div>
+    `;
   }
 
   function bindEvents() {
@@ -55,15 +108,22 @@ export function createClientsTabModule(ctx) {
       const payload = Object.fromEntries(new FormData(form).entries());
       payload.active = payload.active === 'true';
 
-      if (state.editingClientId) {
-        await clientsModule.updateClient(state.editingClientId, payload);
-        state.editingClientId = null;
-      } else {
-        await clientsModule.createClient(payload);
-      }
+      try {
+        if (state.editingClientId) {
+          await clientsModule.updateClient(state.editingClientId, payload);
+          state.editingClientId = null;
+          showToast('Cliente atualizado.', 'success');
+        } else {
+          await clientsModule.createClient(payload);
+          showToast('Cliente cadastrado.', 'success');
+        }
 
-      form.reset();
-      render();
+        form.reset();
+        render();
+      } catch (error) {
+        console.error(error);
+        alert(error.message || 'Erro ao salvar cliente.');
+      }
     });
 
     tabEls.clients.querySelector('#client-reset-btn').addEventListener('click', () => {
@@ -95,7 +155,19 @@ export function createClientsTabModule(ctx) {
 
     tabEls.clients.querySelectorAll('[data-client-inactivate]').forEach((btn) => {
       btn.addEventListener('click', async () => {
-        await clientsModule.inactivateClient(btn.dataset.clientInactivate);
+        const confirmed = window.confirm('Inativar este cliente?');
+        if (!confirmed) return;
+
+        try {
+          await clientsModule.inactivateClient(btn.dataset.clientInactivate);
+          showToast('Cliente inativado.', 'success');
+          if (state.editingClientId === btn.dataset.clientInactivate) {
+            state.editingClientId = null;
+          }
+        } catch (error) {
+          console.error(error);
+          alert(error.message || 'Erro ao inativar cliente.');
+        }
       });
     });
 
@@ -112,29 +184,28 @@ export function createClientsTabModule(ctx) {
       return;
     }
 
-    const editing = (state.clients || []).find((item) => item.id === state.editingClientId) || null;
+    const editing = getEditingClient();
     const rows = getFilteredClients();
-    const activeCount = (state.clients || []).filter((item) => item.active !== false).length;
-    const inactiveCount = (state.clients || []).filter((item) => item.active === false).length;
+    const summary = getSummary();
 
     tabEls.clients.innerHTML = `
       <div class="section-stack">
         <div class="cards-grid">
           <div class="metric-card">
             <span>Total de clientes</span>
-            <strong>${(state.clients || []).length}</strong>
+            <strong>${summary.total}</strong>
           </div>
           <div class="metric-card">
             <span>Ativos</span>
-            <strong>${activeCount}</strong>
+            <strong>${summary.active}</strong>
           </div>
           <div class="metric-card">
             <span>Inativos</span>
-            <strong>${inactiveCount}</strong>
+            <strong>${summary.inactive}</strong>
           </div>
           <div class="metric-card">
             <span>Filtrados</span>
-            <strong>${rows.length}</strong>
+            <strong>${summary.filtered}</strong>
           </div>
         </div>
 
@@ -154,10 +225,22 @@ export function createClientsTabModule(ctx) {
                 <div class="soft-divider"></div>
 
                 <div class="form-grid">
-                  <label>Nome<input name="name" required /></label>
-                  <label>Telefone<input name="phone" /></label>
-                  <label>Endereço<input name="address" /></label>
-                  <label>E-mail<input name="email" type="email" /></label>
+                  <label>Nome
+                    <input name="name" required />
+                  </label>
+
+                  <label>Telefone
+                    <input name="phone" />
+                  </label>
+
+                  <label>Endereço
+                    <input name="address" />
+                  </label>
+
+                  <label>E-mail
+                    <input name="email" type="email" />
+                  </label>
+
                   <label>Status
                     <select name="active">
                       <option value="true">Ativo</option>
@@ -174,7 +257,10 @@ export function createClientsTabModule(ctx) {
                 </div>
                 <div class="soft-divider"></div>
 
-                <label style="grid-column:1 / -1;">Observações<textarea name="notes"></textarea></label>
+                <label style="grid-column:1 / -1;">
+                  Observações
+                  <textarea name="notes"></textarea>
+                </label>
               </div>
 
               <div class="form-actions" style="grid-column:1 / -1;">
@@ -192,12 +278,18 @@ export function createClientsTabModule(ctx) {
               </div>
 
               <div class="search-row" style="margin-bottom:14px;">
-                <input id="client-filter-term" placeholder="Buscar por nome, telefone, e-mail ou endereço" value="${escapeHtml(filters.term)}" />
+                <input
+                  id="client-filter-term"
+                  placeholder="Buscar por nome, telefone, e-mail ou endereço"
+                  value="${escapeHtml(filters.term)}"
+                />
+
                 <select id="client-filter-status">
                   <option value="">Todos</option>
                   <option value="ativo" ${filters.status === 'ativo' ? 'selected' : ''}>Ativo</option>
                   <option value="inativo" ${filters.status === 'inativo' ? 'selected' : ''}>Inativo</option>
                 </select>
+
                 <button class="btn btn-secondary" type="button" id="client-filter-apply">Filtrar</button>
                 <button class="btn btn-secondary" type="button" id="client-filter-clear">Limpar</button>
               </div>
@@ -219,14 +311,12 @@ export function createClientsTabModule(ctx) {
                         <td>${escapeHtml(client.name || '-')}</td>
                         <td>${escapeHtml(client.phone || '-')}</td>
                         <td>${escapeHtml(client.email || '-')}</td>
-                        <td><span class="tag ${client.active === false ? 'warning' : 'success'}">${client.active === false ? 'Inativo' : 'Ativo'}</span></td>
                         <td>
-                          <div class="clean-table-actions">
-                            <button class="btn btn-secondary" type="button" data-client-edit="${client.id}">Editar</button>
-                            <button class="btn btn-secondary" type="button" data-client-history="${client.id}">Histórico</button>
-                            <button class="btn btn-danger" type="button" data-client-inactivate="${client.id}">Inativar</button>
-                          </div>
+                          <span class="tag ${client.active === false ? 'warning' : 'success'}">
+                            ${client.active === false ? 'Inativo' : 'Ativo'}
+                          </span>
                         </td>
+                        <td>${renderClientActions(client)}</td>
                       </tr>
                     `).join('') || '<tr><td colspan="5">Nenhum cliente encontrado.</td></tr>'}
                   </tbody>
@@ -238,6 +328,7 @@ export function createClientsTabModule(ctx) {
               <div class="section-header">
                 <h2>Histórico do cliente</h2>
               </div>
+
               <div id="client-history-host">
                 <div class="empty-state">Selecione um cliente para visualizar o histórico.</div>
               </div>
@@ -250,6 +341,7 @@ export function createClientsTabModule(ctx) {
             <h2>Contas do cliente</h2>
             <span class="muted">Financeiro vinculado</span>
           </div>
+
           <div id="accounts-module-host"></div>
         </div>
       </div>

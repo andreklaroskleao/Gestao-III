@@ -22,6 +22,7 @@ export function showToast(message, type = 'info') {
   toast.className = `toast toast-${type}`;
   toast.textContent = message;
   document.body.appendChild(toast);
+
   window.setTimeout(() => {
     toast.remove();
   }, 2600);

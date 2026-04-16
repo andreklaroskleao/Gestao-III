@@ -1273,3 +1273,239 @@ tbody tr:hover {
     min-width: 640px;
   }
 }
+
+/* PACOTE GLOBAL DE RESPONSIVIDADE DAS ABAS */
+
+.tab-panel {
+  min-width: 0;
+}
+
+.users-layout,
+.products-layout,
+.deliveries-layout,
+.sales-layout,
+.settings-layout,
+.dashboard-grid,
+.grid-2,
+.section-stack,
+.form-grid,
+.settings-grid,
+.form-subgrid,
+.kpi-inline,
+.cards-grid,
+.stats-grid {
+  min-width: 0;
+}
+
+.panel,
+.card,
+.table-card,
+.metric-card,
+.compact-card,
+.summary-box,
+.scanner-card {
+  min-width: 0;
+}
+
+.table-wrap {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.table-wrap table {
+  width: 100%;
+}
+
+.clean-table-actions,
+.inline-row,
+.cart-actions,
+.form-actions {
+  flex-wrap: wrap;
+}
+
+.clean-table-actions > .btn,
+.inline-row > .btn,
+.cart-actions > .btn,
+.form-actions > .btn {
+  flex: 0 1 auto;
+}
+
+.summary-box .summary-line strong,
+.metric-card strong,
+.compact-card strong {
+  word-break: break-word;
+}
+
+.list-item,
+.delivery-item,
+.cart-item,
+.alert-item {
+  overflow-wrap: anywhere;
+}
+
+input,
+select,
+textarea,
+button {
+  max-width: 100%;
+}
+
+@media (max-width: 1280px) {
+  .users-layout,
+  .products-layout,
+  .deliveries-layout,
+  .settings-layout,
+  .sales-layout,
+  .dashboard-grid,
+  .grid-2 {
+    grid-template-columns: 1fr !important;
+  }
+
+  .sticky-summary {
+    position: static !important;
+    top: auto !important;
+  }
+}
+
+@media (max-width: 992px) {
+  .cards-grid,
+  .stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .form-grid,
+  .settings-grid,
+  .form-subgrid,
+  .permission-grid,
+  .kpi-inline {
+    grid-template-columns: 1fr !important;
+  }
+
+  .section-header,
+  .form-section-title {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .search-row {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .search-row > input,
+  .search-row > select,
+  .search-row > button {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .clean-table-actions,
+  .inline-row,
+  .cart-actions,
+  .form-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+
+  .clean-table-actions > *,
+  .inline-row > *,
+  .cart-actions > *,
+  .form-actions > * {
+    width: 100%;
+  }
+
+  .summary-line,
+  .cart-line {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 768px) {
+  .main {
+    padding: 10px;
+  }
+
+  .topbar {
+    border-radius: 16px;
+    padding: 12px;
+  }
+
+  .topbar-left h1 {
+    font-size: 1.2rem;
+  }
+
+  .topbar-left p {
+    font-size: 0.9rem;
+  }
+
+  .panel,
+  .card,
+  .table-card,
+  .metric-card,
+  .compact-card,
+  .auth-card {
+    padding: 14px;
+    border-radius: 16px;
+  }
+
+  .stats-grid,
+  .cards-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .metric-card {
+    min-height: auto;
+  }
+
+  .metric-card strong {
+    font-size: 1.35rem;
+  }
+
+  .table-wrap table {
+    min-width: 620px;
+  }
+
+  .permission-item {
+    padding: 10px 12px;
+  }
+
+  .nav-item {
+    min-height: 42px;
+  }
+
+  .summary-box {
+    padding: 12px;
+  }
+}
+
+@media (max-width: 560px) {
+  .auth-shell.active {
+    padding: 14px;
+  }
+
+  .auth-card {
+    padding: 18px;
+  }
+
+  .table-wrap table {
+    min-width: 560px;
+  }
+
+  .btn {
+    min-height: 42px;
+  }
+
+  input,
+  select {
+    height: 44px;
+  }
+
+  textarea {
+    min-height: 96px;
+  }
+}

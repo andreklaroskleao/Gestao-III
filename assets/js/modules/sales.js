@@ -49,35 +49,14 @@ export function createSalesModule(ctx) {
     showToast('Carrinho limpo.', 'info');
   }
 
-  function renderCartItems() {
-    if (!state.cart.length) {
-      return '<div class="empty-state">Nenhum item adicionado.</div>';
-    }
-
-    return state.cart.map((item) => `
-      <div class="cart-item">
-        <div class="cart-line">
-          <strong>${escapeHtml(item.name)}</strong>
-          <span>${currency(item.salePrice)}</span>
-        </div>
-        <div class="cart-line">
-          <span>Qtd: ${item.quantity}</span>
-          <span>Total: ${currency(item.salePrice * item.quantity)}</span>
-        </div>
-        <div class="cart-actions">
-          <button class="btn btn-secondary" type="button" data-cart-decrease="${item.id}">-1</button>
-          <button class="btn btn-secondary" type="button" data-cart-increase="${item.id}">+1</button>
-          <button class="btn btn-danger" type="button" data-cart-remove="${item.id}">Remover</button>
-        </div>
-      </div>
-    `).join('');
-  }
-
   function calculateCartTotal() {
     const discountInput = tabEls.sales?.querySelector('input[name="discount"]');
     const paidInput = tabEls.sales?.querySelector('input[name="amountPaid"]');
 
-    const subtotal = state.cart.reduce((sum, item) => sum + (Number(item.salePrice) * Number(item.quantity)), 0);
+    const subtotal = state.cart.reduce((sum, item) => {
+      return sum + (Number(item.salePrice) * Number(item.quantity));
+    }, 0);
+
     const discount = toNumber(discountInput?.value || 0);
     const total = Math.max(0, subtotal - discount);
     const amountPaid = toNumber(paidInput?.value || 0);
@@ -99,6 +78,7 @@ export function createSalesModule(ctx) {
     tabEls.sales.querySelector('#sale-discount-view').textContent = currency(discount);
     tabEls.sales.querySelector('#sale-total').textContent = currency(total);
     tabEls.sales.querySelector('#sale-change').textContent = currency(change);
+    tabEls.sales.querySelector('#sale-items-count').textContent = String(state.cart.length);
   }
 
   function findProductByBarcode(barcode) {
@@ -170,13 +150,16 @@ export function createSalesModule(ctx) {
     const resultsEl = tabEls.sales.querySelector('#sale-search-results');
 
     const results = (state.products || [])
-      .filter((product) => product.status !== 'inativo' && [product.name, product.barcode].join(' ').toLowerCase().includes(term))
+      .filter((product) => {
+        return product.status !== 'inativo'
+          && [product.name, product.barcode, product.brand, product.supplier].join(' ').toLowerCase().includes(term);
+      })
       .slice(0, 8);
 
     resultsEl.innerHTML = results.map((product) => `
       <div class="list-item">
         <strong>${escapeHtml(product.name)}</strong>
-        <span>${escapeHtml(product.barcode || 'Sem código')} · Estoque: ${product.quantity}</span>
+        <span>${escapeHtml(product.barcode || 'Sem código')} · Estoque: ${product.quantity} · ${currency(product.salePrice || 0)}</span>
         <div class="inline-row" style="margin-top:8px;">
           <button class="btn btn-primary" type="button" data-add-cart="${product.id}">Adicionar</button>
         </div>
@@ -411,6 +394,30 @@ export function createSalesModule(ctx) {
     }
   }
 
+  function renderCartItems() {
+    if (!state.cart.length) {
+      return '<div class="empty-state">Nenhum item adicionado.</div>';
+    }
+
+    return state.cart.map((item) => `
+      <div class="cart-item">
+        <div class="cart-line">
+          <strong>${escapeHtml(item.name)}</strong>
+          <span>${currency(item.salePrice)}</span>
+        </div>
+        <div class="cart-line">
+          <span>Qtd: ${item.quantity}</span>
+          <span>Total: ${currency(item.salePrice * item.quantity)}</span>
+        </div>
+        <div class="cart-actions">
+          <button class="btn btn-secondary" type="button" data-cart-decrease="${item.id}">-1</button>
+          <button class="btn btn-secondary" type="button" data-cart-increase="${item.id}">+1</button>
+          <button class="btn btn-danger" type="button" data-cart-remove="${item.id}">Remover</button>
+        </div>
+      </div>
+    `).join('');
+  }
+
   function bindCartButtons() {
     tabEls.sales.querySelectorAll('[data-cart-decrease]').forEach((btn) => {
       btn.addEventListener('click', (event) => {
@@ -626,126 +633,156 @@ ${(sale.items || []).map((item) => `- ${item.name} | Qtd: ${item.quantity} | Uni
     const filteredSales = getFilteredSales();
 
     tabEls.sales.innerHTML = `
-      <div class="sales-layout">
-        <div class="panel">
-          <div class="section-header">
-            <h2>Novo atendimento</h2>
-            <span class="muted">Busca por nome, código de barras e leitor USB</span>
+      <div class="section-stack">
+        <div class="cards-grid">
+          <div class="metric-card">
+            <span>Itens no carrinho</span>
+            <strong id="sale-items-count">${state.cart.length}</strong>
           </div>
-
-          <div class="search-row">
-            <input id="sale-product-search" placeholder="Pesquisar ou bipar código de barras" autocomplete="off" />
-            <button id="sale-product-search-btn" class="btn btn-secondary" type="button">Buscar</button>
-            ${mobile ? '<button id="camera-scan-btn" class="btn btn-primary" type="button">Ler código de barras</button>' : ''}
+          <div class="metric-card">
+            <span>Subtotal</span>
+            <strong>${currency(cartTotal.subtotal)}</strong>
           </div>
-
-          <div class="auth-hint" style="margin-top:10px;">
-            ${mobile ? 'No celular, use a câmera traseira para leitura. Se o código não existir, o sistema avisará.' : 'No computador: F2 busca, F4 limpa carrinho, F9 finaliza venda.'}
+          <div class="metric-card">
+            <span>Total atual</span>
+            <strong>${currency(cartTotal.total)}</strong>
           </div>
+          <div class="metric-card">
+            <span>Troco</span>
+            <strong>${currency(cartTotal.change)}</strong>
+          </div>
+        </div>
 
-          <div id="sale-search-results" class="stack-list" style="margin-top:14px;"></div>
+        <div class="sales-layout">
+          <div class="section-stack">
+            <div class="panel">
+              <div class="section-header">
+                <h2>Busca de produtos</h2>
+                <span class="muted">Nome, código de barras, leitor USB e câmera</span>
+              </div>
 
-          ${mobile ? `
-            <div class="scanner-card" id="scanner-card" style="margin-top:14px; display:none;">
-              <h3>Leitura de código de barras</h3>
-              <video id="barcode-video" class="video-preview" autoplay muted playsinline></video>
-              <div id="barcode-status" class="auth-hint" style="margin-top:10px;">Aguardando câmera...</div>
-              <div class="inline-row" style="margin-top:10px;">
-                <button id="stop-scan-btn" class="btn btn-secondary" type="button">Parar leitura</button>
+              <div class="search-row">
+                <input id="sale-product-search" placeholder="Pesquisar ou bipar código de barras" autocomplete="off" />
+                <button id="sale-product-search-btn" class="btn btn-secondary" type="button">Buscar</button>
+                ${mobile ? '<button id="camera-scan-btn" class="btn btn-primary" type="button">Ler código de barras</button>' : ''}
+              </div>
+
+              <div class="auth-hint" style="margin-top:10px;">
+                ${mobile
+                  ? 'No celular, use a câmera traseira para leitura. Se o código não existir, o sistema avisará.'
+                  : 'No computador: F2 busca, F4 limpa carrinho, F9 finaliza venda.'}
+              </div>
+
+              <div id="sale-search-results" class="stack-list slim-list" style="margin-top:14px;"></div>
+
+              ${mobile ? `
+                <div class="scanner-card" id="scanner-card" style="margin-top:14px; display:none;">
+                  <h3>Leitura de código de barras</h3>
+                  <video id="barcode-video" class="video-preview" autoplay muted playsinline></video>
+                  <div id="barcode-status" class="auth-hint" style="margin-top:10px;">Aguardando câmera...</div>
+                  <div class="inline-row" style="margin-top:10px;">
+                    <button id="stop-scan-btn" class="btn btn-secondary" type="button">Parar leitura</button>
+                  </div>
+                </div>
+              ` : ''}
+            </div>
+
+            <div class="table-card">
+              <div class="section-header">
+                <h2>Histórico de vendas</h2>
+                <span class="muted">${filteredSales.length} resultado(s)</span>
+              </div>
+
+              <div class="search-row" style="margin-bottom:14px;">
+                <input id="sales-filter-customer" placeholder="Cliente" value="${escapeHtml(saleFilters.customer)}" />
+                <select id="sales-filter-payment">
+                  <option value="">Todas as formas</option>
+                  ${paymentMethods.map((item) => `<option value="${item}" ${saleFilters.paymentMethod === item ? 'selected' : ''}>${item}</option>`).join('')}
+                </select>
+                <input id="sales-filter-date-from" type="date" value="${saleFilters.dateFrom}" />
+                <input id="sales-filter-date-to" type="date" value="${saleFilters.dateTo}" />
+                <button class="btn btn-secondary" type="button" id="sales-filter-apply">Filtrar</button>
+                <button class="btn btn-secondary" type="button" id="sales-filter-clear">Limpar</button>
+              </div>
+
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Data</th>
+                      <th>Cliente</th>
+                      <th>Total</th>
+                      <th>Pagamento</th>
+                      <th>Itens</th>
+                      <th>Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${filteredSales.slice(0, 50).map((sale) => `
+                      <tr>
+                        <td>${formatDateTime(sale.createdAt)}</td>
+                        <td>${escapeHtml(sale.customerName || 'Balcão')}</td>
+                        <td>${currency(sale.total)}</td>
+                        <td>${escapeHtml(sale.paymentMethod || '-')}</td>
+                        <td>${sale.items?.length || 0}</td>
+                        <td>
+                          <div class="clean-table-actions">
+                            <button class="btn btn-secondary" type="button" data-sale-view="${sale.id}">Detalhes</button>
+                            <button class="btn btn-primary" type="button" data-sale-reprint="${sale.id}">Reimprimir</button>
+                          </div>
+                        </td>
+                      </tr>
+                    `).join('') || '<tr><td colspan="6">Nenhuma venda registrada.</td></tr>'}
+                  </tbody>
+                </table>
               </div>
             </div>
-          ` : ''}
-        </div>
-
-        <div class="panel">
-          <div class="section-header">
-            <h2>Itens da venda</h2>
-            <span class="muted">${state.cart.length} item(ns)</span>
           </div>
 
-          <div id="cart-list" class="cart-list">${renderCartItems()}</div>
+          <div class="section-stack sticky-summary">
+            <div class="panel summary-highlight">
+              <div class="section-header">
+                <h2>Venda atual</h2>
+                <span class="badge-soft">${state.cart.length} item(ns)</span>
+              </div>
 
-          <form id="sale-form" class="form-grid" style="margin-top:16px;">
-            <input type="hidden" id="sale-client-id" value="" />
+              <div id="cart-list" class="cart-list">${renderCartItems()}</div>
 
-            <label>Cliente selecionado<input id="sale-client-selected" value="" placeholder="Nenhum cliente selecionado" readonly /></label>
+              <form id="sale-form" class="form-grid" style="margin-top:16px;">
+                <input type="hidden" id="sale-client-id" value="" />
 
-            <div class="form-actions" style="grid-column:1 / -1; justify-content:flex-start;">
-              <button class="btn btn-secondary" type="button" id="sale-client-picker-btn">Selecionar cliente</button>
-              <button class="btn btn-secondary" type="button" id="sale-client-clear-btn">Limpar cliente</button>
+                <label style="grid-column:1 / -1;">Cliente selecionado
+                  <input id="sale-client-selected" value="" placeholder="Nenhum cliente selecionado" readonly />
+                </label>
+
+                <div class="form-actions" style="grid-column:1 / -1; justify-content:flex-start;">
+                  <button class="btn btn-secondary" type="button" id="sale-client-picker-btn">Selecionar cliente</button>
+                  <button class="btn btn-secondary" type="button" id="sale-client-clear-btn">Limpar cliente</button>
+                </div>
+
+                <label>Cliente<input name="customerName" placeholder="Opcional" /></label>
+                <label>Forma de pagamento
+                  <select name="paymentMethod">
+                    ${paymentMethods.map((item) => `<option value="${item}">${item}</option>`).join('')}
+                  </select>
+                </label>
+                <label>Desconto<input name="discount" type="number" step="0.01" min="0" value="0" /></label>
+                <label>Valor pago<input name="amountPaid" type="number" step="0.01" min="0" value="0" /></label>
+
+                <div class="summary-box" style="grid-column: 1 / -1;">
+                  <div class="summary-line"><span>Subtotal</span><strong id="sale-subtotal">${currency(cartTotal.subtotal)}</strong></div>
+                  <div class="summary-line"><span>Desconto</span><strong id="sale-discount-view">${currency(cartTotal.discount)}</strong></div>
+                  <div class="summary-line total"><span>Total</span><strong id="sale-total">${currency(cartTotal.total)}</strong></div>
+                  <div class="summary-line"><span>Troco</span><strong id="sale-change">${currency(cartTotal.change)}</strong></div>
+                </div>
+
+                <div class="form-actions" style="grid-column: 1 / -1;">
+                  <button class="btn btn-success" type="submit">Finalizar venda</button>
+                  <button class="btn btn-secondary" type="button" id="clear-cart-btn">Limpar carrinho</button>
+                </div>
+              </form>
             </div>
-
-            <label>Cliente<input name="customerName" placeholder="Opcional" /></label>
-            <label>Forma de pagamento
-              <select name="paymentMethod">
-                ${paymentMethods.map((item) => `<option value="${item}">${item}</option>`).join('')}
-              </select>
-            </label>
-            <label>Desconto<input name="discount" type="number" step="0.01" min="0" value="0" /></label>
-            <label>Valor pago<input name="amountPaid" type="number" step="0.01" min="0" value="0" /></label>
-
-            <div class="summary-box" style="grid-column: 1 / -1;">
-              <div class="summary-line"><span>Subtotal</span><strong id="sale-subtotal">${currency(cartTotal.subtotal)}</strong></div>
-              <div class="summary-line"><span>Desconto</span><strong id="sale-discount-view">${currency(cartTotal.discount)}</strong></div>
-              <div class="summary-line total"><span>Total</span><strong id="sale-total">${currency(cartTotal.total)}</strong></div>
-              <div class="summary-line"><span>Troco</span><strong id="sale-change">${currency(cartTotal.change)}</strong></div>
-            </div>
-
-            <div class="form-actions" style="grid-column: 1 / -1;">
-              <button class="btn btn-success" type="submit">Finalizar venda</button>
-              <button class="btn btn-secondary" type="button" id="clear-cart-btn">Limpar carrinho</button>
-            </div>
-          </form>
-        </div>
-      </div>
-
-      <div class="table-card" style="margin-top:18px;">
-        <div class="section-header">
-          <h2>Histórico detalhado de vendas</h2>
-        </div>
-
-        <div class="search-row" style="margin-bottom:14px;">
-          <input id="sales-filter-customer" placeholder="Cliente" value="${escapeHtml(saleFilters.customer)}" />
-          <select id="sales-filter-payment">
-            <option value="">Todas as formas</option>
-            ${paymentMethods.map((item) => `<option value="${item}" ${saleFilters.paymentMethod === item ? 'selected' : ''}>${item}</option>`).join('')}
-          </select>
-          <input id="sales-filter-date-from" type="date" value="${saleFilters.dateFrom}" />
-          <input id="sales-filter-date-to" type="date" value="${saleFilters.dateTo}" />
-          <button class="btn btn-secondary" type="button" id="sales-filter-apply">Filtrar</button>
-          <button class="btn btn-secondary" type="button" id="sales-filter-clear">Limpar</button>
-        </div>
-
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Data</th>
-                <th>Cliente</th>
-                <th>Total</th>
-                <th>Pagamento</th>
-                <th>Itens</th>
-                <th>Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${filteredSales.slice(0, 50).map((sale) => `
-                <tr>
-                  <td>${formatDateTime(sale.createdAt)}</td>
-                  <td>${escapeHtml(sale.customerName || 'Balcão')}</td>
-                  <td>${currency(sale.total)}</td>
-                  <td>${escapeHtml(sale.paymentMethod || '-')}</td>
-                  <td>${sale.items?.length || 0}</td>
-                  <td>
-                    <div class="inline-row">
-                      <button class="btn btn-secondary" type="button" data-sale-view="${sale.id}">Detalhes</button>
-                      <button class="btn btn-primary" type="button" data-sale-reprint="${sale.id}">Reimprimir</button>
-                    </div>
-                  </td>
-                </tr>
-              `).join('') || '<tr><td colspan="6">Nenhuma venda registrada.</td></tr>'}
-            </tbody>
-          </table>
+          </div>
         </div>
       </div>
     `;

@@ -209,9 +209,12 @@ export function createProductsModule(ctx) {
     }
   }
 
+  function getScannerModalRoot() {
+    return document.getElementById('modal-root');
+  }
+
   function getScannerElements() {
     return {
-      card: document.getElementById('product-barcode-scanner-card'),
       video: document.getElementById('product-barcode-video'),
       status: document.getElementById('product-barcode-status')
     };
@@ -224,18 +227,48 @@ export function createProductsModule(ctx) {
     status.dataset.type = type;
   }
 
-  function showScannerCard() {
-    const { card } = getScannerElements();
-    if (card) {
-      card.style.display = 'block';
-    }
+  function openBarcodeScannerModal() {
+    const modalRoot = getScannerModalRoot();
+    if (!modalRoot) return;
+
+    modalRoot.innerHTML = `
+      <div class="modal-backdrop" id="product-barcode-modal-backdrop">
+        <div class="modal-card">
+          <div class="section-header">
+            <h2>Capturar código de barras</h2>
+            <button class="btn btn-secondary" type="button" id="product-barcode-modal-close">Fechar</button>
+          </div>
+
+          <div class="scanner-card">
+            <video id="product-barcode-video" class="video-preview" autoplay muted playsinline></video>
+            <div id="product-barcode-status" class="auth-hint" style="margin-top:10px;">Aguardando câmera...</div>
+            <div class="form-actions" style="margin-top:10px;">
+              <button class="btn btn-secondary" type="button" id="product-barcode-stop-btn">Parar leitura</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const closeModal = () => {
+      stopBarcodeScanner();
+      modalRoot.innerHTML = '';
+    };
+
+    modalRoot.querySelector('#product-barcode-modal-close').addEventListener('click', closeModal);
+    modalRoot.querySelector('#product-barcode-stop-btn').addEventListener('click', closeModal);
+    modalRoot.querySelector('#product-barcode-modal-backdrop').addEventListener('click', (event) => {
+      if (event.target.id === 'product-barcode-modal-backdrop') {
+        closeModal();
+      }
+    });
   }
 
-  function hideScannerCard() {
-    const { card } = getScannerElements();
-    if (card) {
-      card.style.display = 'none';
-    }
+  function closeBarcodeScannerModal() {
+    const modalRoot = getScannerModalRoot();
+    if (!modalRoot) return;
+    stopBarcodeScanner();
+    modalRoot.innerHTML = '';
   }
 
   function setBarcodeValue(value) {
@@ -254,15 +287,15 @@ export function createProductsModule(ctx) {
       return;
     }
 
+    openBarcodeScannerModal();
     await startBarcodeScanner();
   }
 
   async function startBarcodeScanner() {
     if (scannerRunning) return;
 
-    showScannerCard();
     setScannerStatus('Abrindo câmera traseira...', 'info');
-    stopBarcodeScanner(false);
+    stopBarcodeScanner();
 
     try {
       if ('BarcodeDetector' in window) {
@@ -278,8 +311,9 @@ export function createProductsModule(ctx) {
         await startZxingBarcodeScanner();
       } catch (fallbackError) {
         console.error('Erro ZXing no cadastro:', fallbackError);
-        stopBarcodeScanner(true);
+        stopBarcodeScanner();
         showToast('Não foi possível abrir a câmera para ler o código.', 'error');
+        closeBarcodeScannerModal();
       }
     }
   }
@@ -318,8 +352,8 @@ export function createProductsModule(ctx) {
 
         setBarcodeValue(value);
         setScannerStatus(`Código capturado: ${value}`, 'success');
-        stopBarcodeScanner(true);
         showToast('Código de barras capturado.', 'success');
+        closeBarcodeScannerModal();
       } catch (error) {
         console.error('Erro ao detectar código no cadastro:', error);
       }
@@ -353,8 +387,8 @@ export function createProductsModule(ctx) {
 
           setBarcodeValue(value);
           setScannerStatus(`Código capturado: ${value}`, 'success');
-          stopBarcodeScanner(true);
           showToast('Código de barras capturado.', 'success');
+          closeBarcodeScannerModal();
         }
 
         if (error && error.name !== 'NotFoundException') {
@@ -364,7 +398,7 @@ export function createProductsModule(ctx) {
     );
   }
 
-  function stopBarcodeScanner(hideCard = true) {
+  function stopBarcodeScanner() {
     if (scannerTimer) {
       window.clearInterval(scannerTimer);
       scannerTimer = null;
@@ -395,10 +429,6 @@ export function createProductsModule(ctx) {
     }
 
     scannerRunning = false;
-
-    if (hideCard) {
-      hideScannerCard();
-    }
   }
 
   function bindEvents() {
@@ -408,7 +438,7 @@ export function createProductsModule(ctx) {
 
     tabEls.products.querySelector('#product-reset-btn').addEventListener('click', () => {
       state.editingProductId = null;
-      stopBarcodeScanner(true);
+      closeBarcodeScannerModal();
       render();
     });
 
@@ -440,9 +470,6 @@ export function createProductsModule(ctx) {
     });
 
     tabEls.products.querySelector('#product-barcode-capture-btn')?.addEventListener('click', handleBarcodeCaptureClick);
-    tabEls.products.querySelector('#product-barcode-stop-btn')?.addEventListener('click', () => {
-      stopBarcodeScanner(true);
-    });
 
     bindProductTableActions(tabEls.products);
   }
@@ -538,7 +565,7 @@ export function createProductsModule(ctx) {
                       <input name="barcode" />
                       ${renderBarcodeButton()}
                     </div>
-                    <span class="mini-help">No celular, toque no ícone para usar a câmera. No computador, use a leitora USB no campo.</span>
+                    <span class="mini-help">Toque no ícone para capturar pelo celular. No computador, use a leitora USB no campo.</span>
                   </label>
 
                   <label>Status
@@ -547,19 +574,6 @@ export function createProductsModule(ctx) {
                       <option value="inativo">Inativo</option>
                     </select>
                   </label>
-                </div>
-
-                <div
-                  class="scanner-card"
-                  id="product-barcode-scanner-card"
-                  style="display:none; grid-column:1 / -1;"
-                >
-                  <h3>Capturar código de barras</h3>
-                  <video id="product-barcode-video" class="video-preview" autoplay muted playsinline></video>
-                  <div id="product-barcode-status" class="auth-hint" style="margin-top:10px;">Aguardando câmera...</div>
-                  <div class="form-actions" style="margin-top:10px;">
-                    <button class="btn btn-secondary" type="button" id="product-barcode-stop-btn">Parar leitura</button>
-                  </div>
                 </div>
               </div>
 

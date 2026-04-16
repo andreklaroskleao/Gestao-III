@@ -1,4 +1,4 @@
-import { escapeHtml } from './ui.js';
+import { escapeHtml, showToast } from './ui.js';
 
 export function createDeliveriesModule(ctx) {
   const {
@@ -16,163 +16,234 @@ export function createDeliveriesModule(ctx) {
     clientsModule
   } = ctx;
 
-  let deliveryFilters = {
-    date: '',
+  let filters = {
     status: '',
-    client: '',
+    customer: '',
     phone: '',
-    mode: ''
+    period: ''
   };
 
-  function getTodayString() {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-  }
-
-  function getDeliveryDateValue(item) {
-    if (item.date) return item.date;
-
-    const rawDate = item.scheduledAt?.toDate
-      ? item.scheduledAt.toDate()
-      : (item.scheduledAt ? new Date(item.scheduledAt) : null);
-
-    if (!rawDate || Number.isNaN(rawDate.getTime())) return '';
-
-    return `${rawDate.getFullYear()}-${String(rawDate.getMonth() + 1).padStart(2, '0')}-${String(rawDate.getDate()).padStart(2, '0')}`;
-  }
-
-  function isPendingStatus(status) {
-    return ['Agendado', 'Em rota', 'Reagendado', 'Recolhimento'].includes(status);
+  function getEditingDelivery() {
+    return (state.deliveries || []).find((item) => item.id === state.editingDeliveryId) || null;
   }
 
   function getFilteredDeliveries() {
-    return (state.deliveries || []).filter((item) => {
-      const dateValue = getDeliveryDateValue(item);
-      const clientValue = String(item.clientName || '').toLowerCase();
-      const phoneValue = String(item.phone || '').toLowerCase();
-      const statusValue = String(item.status || '');
+    const rows = state.deliveries || [];
 
-      const matchDate = !deliveryFilters.date || dateValue === deliveryFilters.date;
-      const matchStatus = !deliveryFilters.status || statusValue === deliveryFilters.status;
-      const matchClient = !deliveryFilters.client || clientValue.includes(deliveryFilters.client.toLowerCase());
-      const matchPhone = !deliveryFilters.phone || phoneValue.includes(deliveryFilters.phone.toLowerCase());
+    return rows.filter((item) => {
+      const customer = String(item.customerName || '').toLowerCase();
+      const phone = String(item.phone || '').toLowerCase();
+      const status = String(item.status || '');
+      const scheduledDate = normalizeScheduledDate(item.scheduledAt);
 
-      let matchMode = true;
-      if (deliveryFilters.mode === 'today') {
-        matchMode = dateValue === getTodayString();
+      if (filters.status && status !== filters.status) return false;
+      if (filters.customer && !customer.includes(filters.customer.toLowerCase())) return false;
+      if (filters.phone && !phone.includes(filters.phone.toLowerCase())) return false;
+
+      if (filters.period === 'today') {
+        const today = new Date();
+        const todayKey = formatDateKey(today);
+        if (scheduledDate !== todayKey) return false;
       }
-      if (deliveryFilters.mode === 'pending') {
-        matchMode = isPendingStatus(statusValue);
+
+      if (filters.period === 'pending') {
+        if (status === 'Concluído' || status === 'Cancelado') return false;
       }
 
-      return matchDate && matchStatus && matchClient && matchPhone && matchMode;
+      return true;
     });
   }
 
-  function deliveryStatusClass(status) {
-    if (status === 'Concluído') return 'success';
-    if (status === 'Cancelado') return 'danger';
-    if (status === 'Reagendado') return 'warning';
-    return 'info';
+  function normalizeScheduledDate(value) {
+    if (!value) return '';
+
+    if (value?.toDate) {
+      return formatDateKey(value.toDate());
+    }
+
+    if (typeof value === 'string') {
+      if (value.includes('T')) {
+        const dt = new Date(value);
+        if (!Number.isNaN(dt.getTime())) return formatDateKey(dt);
+      }
+      return value.slice(0, 10);
+    }
+
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) {
+      return formatDateKey(parsed);
+    }
+
+    return '';
   }
 
-  function getSummary(filteredDeliveries) {
-    const total = filteredDeliveries.length;
-    const pending = filteredDeliveries.filter((item) => isPendingStatus(item.status)).length;
-    const today = filteredDeliveries.filter((item) => getDeliveryDateValue(item) === getTodayString()).length;
-    const concluded = filteredDeliveries.filter((item) => item.status === 'Concluído').length;
+  function formatDateKey(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
 
-    return { total, pending, today, concluded };
+  function getDeliverySummary() {
+    const rows = state.deliveries || [];
+
+    const todayKey = formatDateKey(new Date());
+    const todayCount = rows.filter((item) => normalizeScheduledDate(item.scheduledAt) === todayKey).length;
+    const pendingCount = rows.filter((item) => !['Concluído', 'Cancelado'].includes(item.status)).length;
+    const completedCount = rows.filter((item) => item.status === 'Concluído').length;
+    const totalValue = rows.reduce((sum, item) => sum + Number(item.totalAmount || 0), 0);
+
+    return {
+      totalCount: rows.length,
+      todayCount,
+      pendingCount,
+      completedCount,
+      totalValue
+    };
+  }
+
+  function fillForm(form, delivery) {
+    if (!form) return;
+
+    form.elements.customerName.value = delivery?.customerName || '';
+    form.elements.phone.value = delivery?.phone || '';
+    form.elements.address.value = delivery?.address || '';
+    form.elements.reference.value = delivery?.reference || '';
+    form.elements.notes.value = delivery?.notes || '';
+    form.elements.paymentMethod.value = delivery?.paymentMethod || paymentMethods[0] || 'Dinheiro';
+    form.elements.status.value = delivery?.status || 'Agendado';
+    form.elements.totalAmount.value = delivery?.totalAmount ?? '';
+    form.elements.scheduledDate.value = delivery?.scheduledDate || normalizeScheduledDate(delivery?.scheduledAt) || '';
+    form.elements.scheduledTime.value = delivery?.scheduledTime || '';
+    const clientIdInput = form.querySelector('#delivery-client-id');
+    const clientSelectedInput = form.querySelector('#delivery-client-selected');
+
+    if (clientIdInput) {
+      clientIdInput.value = delivery?.clientId || '';
+    }
+
+    if (clientSelectedInput) {
+      clientSelectedInput.value = delivery?.clientId
+        ? `${delivery.customerName || ''}${delivery.phone ? ` - ${delivery.phone}` : ''}`
+        : '';
+    }
+  }
+
+  function getStatusTagClass(status) {
+    if (status === 'Concluído') return 'success';
+    if (status === 'Cancelado') return 'danger';
+    if (status === 'Em rota') return 'info';
+    return 'warning';
   }
 
   async function handleDeliverySubmit(event) {
     event.preventDefault();
 
-    const data = Object.fromEntries(new FormData(event.currentTarget).entries());
-    data.clientId = tabEls.deliveries.querySelector('#delivery-client-id')?.value || '';
-    data.amount = toNumber(data.amount);
-    data.scheduledAt = timestampFromDateTime(data.date, data.time);
-    data.assignedUserId = state.currentUser.uid;
-    data.assignedUserName = state.currentUser.fullName;
+    const form = event.currentTarget;
+    const payload = Object.fromEntries(new FormData(form).entries());
+
+    payload.totalAmount = toNumber(payload.totalAmount);
+    payload.scheduledAt = payload.scheduledDate
+      ? timestampFromDateTime(payload.scheduledDate, payload.scheduledTime || '00:00')
+      : null;
+
+    const selectedClientId = form.querySelector('#delivery-client-id')?.value || '';
+    payload.clientId = selectedClientId || '';
+    payload.scheduledDate = payload.scheduledDate || '';
+    payload.scheduledTime = payload.scheduledTime || '';
+    payload.deleted = false;
+
+    delete payload.customerSearch;
 
     if (state.editingDeliveryId) {
-      await updateByPath('deliveries', state.editingDeliveryId, data);
+      await updateByPath('deliveries', state.editingDeliveryId, payload);
       state.editingDeliveryId = null;
+      showToast('Entrega atualizada.', 'success');
     } else {
-      await createDoc(refs.deliveries, data);
+      await createDoc(refs.deliveries, payload);
+      showToast('Entrega agendada.', 'success');
     }
 
-    event.currentTarget.reset();
+    form.reset();
     render();
   }
 
-  function fillEditingForm(form) {
-    if (!state.editingDeliveryId) return;
+  async function updateDeliveryStatus(deliveryId, nextStatus) {
+    const delivery = (state.deliveries || []).find((item) => item.id === deliveryId);
+    if (!delivery) return;
 
-    const editing = (state.deliveries || []).find((item) => item.id === state.editingDeliveryId);
-    if (!editing) return;
+    await updateByPath('deliveries', deliveryId, {
+      status: nextStatus
+    });
 
-    form.elements.clientName.value = editing.clientName || '';
-    form.elements.phone.value = editing.phone || '';
-    form.elements.address.value = editing.address || '';
-    form.elements.amount.value = editing.amount || 0;
-    form.elements.paymentMethod.value = editing.paymentMethod || paymentMethods[0];
-    form.elements.date.value = editing.date || '';
-    form.elements.time.value = editing.time || '';
-    form.elements.status.value = editing.status || deliveryStatuses[0];
-    form.elements.description.value = editing.description || '';
-    form.elements.notes.value = editing.notes || '';
-
-    tabEls.deliveries.querySelector('#delivery-client-id').value = editing.clientId || '';
-    tabEls.deliveries.querySelector('#delivery-client-selected').value = editing.clientName || '';
+    showToast(`Status alterado para ${nextStatus}.`, 'success');
   }
 
-  function applyFiltersFromScreen() {
-    deliveryFilters.date = tabEls.deliveries.querySelector('#delivery-filter-date')?.value || '';
-    deliveryFilters.status = tabEls.deliveries.querySelector('#delivery-filter-status')?.value || '';
-    deliveryFilters.client = tabEls.deliveries.querySelector('#delivery-filter-client')?.value || '';
-    deliveryFilters.phone = tabEls.deliveries.querySelector('#delivery-filter-phone')?.value || '';
-    render();
+  function renderDeliveryActions(item) {
+    const status = String(item.status || '');
+
+    let primaryAction = `
+      <button
+        class="icon-action-btn"
+        type="button"
+        data-delivery-edit="${item.id}"
+        title="Editar"
+        aria-label="Editar"
+      >✏️</button>
+    `;
+
+    if (status === 'Agendado' || status === 'Reagendado') {
+      primaryAction = `
+        <button
+          class="icon-action-btn info"
+          type="button"
+          data-delivery-status="${item.id}:Em rota"
+          title="Iniciar"
+          aria-label="Iniciar"
+        >▶️</button>
+      `;
+    } else if (status === 'Em rota') {
+      primaryAction = `
+        <button
+          class="icon-action-btn success"
+          type="button"
+          data-delivery-status="${item.id}:Concluído"
+          title="Concluir"
+          aria-label="Concluir"
+        >✅</button>
+      `;
+    }
+
+    return `
+      <div class="actions-inline-compact">
+        ${primaryAction}
+
+        <button
+          class="icon-action-btn"
+          type="button"
+          data-delivery-edit="${item.id}"
+          title="Editar"
+          aria-label="Editar"
+        >✏️</button>
+
+        <details class="actions-menu">
+          <summary
+            class="icon-action-btn"
+            title="Mais ações"
+            aria-label="Mais ações"
+          >⋯</summary>
+          <div class="actions-menu-popover">
+            <button class="btn btn-secondary" type="button" data-delivery-status="${item.id}:Em rota">Iniciar</button>
+            <button class="btn btn-success" type="button" data-delivery-status="${item.id}:Concluído">Concluir</button>
+            <button class="btn btn-danger" type="button" data-delivery-status="${item.id}:Cancelado">Cancelar</button>
+            <button class="btn btn-secondary" type="button" data-delivery-status="${item.id}:Reagendado">Reagendar</button>
+          </div>
+        </details>
+      </div>
+    `;
   }
 
-  function clearFilters() {
-    deliveryFilters = {
-      date: '',
-      status: '',
-      client: '',
-      phone: '',
-      mode: ''
-    };
-    render();
-  }
-
-  function bindEvents() {
-    const form = tabEls.deliveries.querySelector('#delivery-form');
-    form.addEventListener('submit', handleDeliverySubmit);
-
-    tabEls.deliveries.querySelector('#delivery-reset-btn').addEventListener('click', () => {
-      state.editingDeliveryId = null;
-      render();
-    });
-
-    tabEls.deliveries.querySelector('#delivery-filter-apply').addEventListener('click', () => {
-      deliveryFilters.mode = '';
-      applyFiltersFromScreen();
-    });
-
-    tabEls.deliveries.querySelector('#delivery-filter-clear').addEventListener('click', clearFilters);
-
-    tabEls.deliveries.querySelector('#delivery-filter-today').addEventListener('click', () => {
-      deliveryFilters.mode = 'today';
-      deliveryFilters.date = getTodayString();
-      render();
-    });
-
-    tabEls.deliveries.querySelector('#delivery-filter-pending').addEventListener('click', () => {
-      deliveryFilters.mode = 'pending';
-      render();
-    });
-
+  function bindTableActions() {
     tabEls.deliveries.querySelectorAll('[data-delivery-edit]').forEach((btn) => {
       btn.addEventListener('click', () => {
         state.editingDeliveryId = btn.dataset.deliveryEdit;
@@ -182,12 +253,37 @@ export function createDeliveriesModule(ctx) {
 
     tabEls.deliveries.querySelectorAll('[data-delivery-status]').forEach((btn) => {
       btn.addEventListener('click', async () => {
-        const [id, status] = btn.dataset.deliveryStatus.split(':');
-        await updateByPath('deliveries', id, { status });
+        const [id, nextStatus] = btn.dataset.deliveryStatus.split(':');
+        await updateDeliveryStatus(id, nextStatus);
       });
     });
+  }
 
-    tabEls.deliveries.querySelector('#delivery-client-picker-btn')?.addEventListener('click', () => {
+  function bindFilterActions() {
+    tabEls.deliveries.querySelector('#delivery-filter-apply')?.addEventListener('click', () => {
+      filters.status = tabEls.deliveries.querySelector('#delivery-filter-status')?.value || '';
+      filters.customer = tabEls.deliveries.querySelector('#delivery-filter-customer')?.value || '';
+      filters.phone = tabEls.deliveries.querySelector('#delivery-filter-phone')?.value || '';
+      filters.period = tabEls.deliveries.querySelector('#delivery-filter-period')?.value || '';
+      render();
+    });
+
+    tabEls.deliveries.querySelector('#delivery-filter-clear')?.addEventListener('click', () => {
+      filters = {
+        status: '',
+        customer: '',
+        phone: '',
+        period: ''
+      };
+      render();
+    });
+  }
+
+  function bindClientPicker() {
+    const pickBtn = tabEls.deliveries.querySelector('#delivery-client-picker-btn');
+    const clearBtn = tabEls.deliveries.querySelector('#delivery-client-clear-btn');
+
+    pickBtn?.addEventListener('click', () => {
       const modalRoot = document.getElementById('modal-root');
       if (!modalRoot) return;
 
@@ -217,56 +313,82 @@ export function createDeliveriesModule(ctx) {
       clientsModule.renderClientPicker({
         target: '#delivery-client-picker-host',
         onSelect: (client) => {
-          tabEls.deliveries.querySelector('#delivery-client-id').value = client.id;
-          tabEls.deliveries.querySelector('#delivery-client-selected').value = `${client.name} - ${client.phone || ''}`;
-          tabEls.deliveries.querySelector('input[name="clientName"]').value = client.name || '';
-          tabEls.deliveries.querySelector('input[name="phone"]').value = client.phone || '';
-          tabEls.deliveries.querySelector('input[name="address"]').value = client.address || '';
+          const form = tabEls.deliveries.querySelector('#delivery-form');
+          if (!form) return;
+
+          form.querySelector('#delivery-client-id').value = client.id || '';
+          form.querySelector('#delivery-client-selected').value = `${client.name || ''}${client.phone ? ` - ${client.phone}` : ''}`;
+          form.elements.customerName.value = client.name || '';
+          form.elements.phone.value = client.phone || '';
+          form.elements.address.value = client.address || '';
           closeModal();
         }
       });
     });
 
-    tabEls.deliveries.querySelector('#delivery-client-clear-btn')?.addEventListener('click', () => {
-      tabEls.deliveries.querySelector('#delivery-client-id').value = '';
-      tabEls.deliveries.querySelector('#delivery-client-selected').value = '';
+    clearBtn?.addEventListener('click', () => {
+      const form = tabEls.deliveries.querySelector('#delivery-form');
+      if (!form) return;
+
+      form.querySelector('#delivery-client-id').value = '';
+      form.querySelector('#delivery-client-selected').value = '';
     });
   }
 
+  function bindFormActions() {
+    const form = tabEls.deliveries.querySelector('#delivery-form');
+    if (!form) return;
+
+    form.addEventListener('submit', handleDeliverySubmit);
+
+    tabEls.deliveries.querySelector('#delivery-reset-btn')?.addEventListener('click', () => {
+      state.editingDeliveryId = null;
+      render();
+    });
+  }
+
+  function bindEvents() {
+    bindFormActions();
+    bindFilterActions();
+    bindClientPicker();
+    bindTableActions();
+  }
+
   function render() {
-    const filteredDeliveries = getFilteredDeliveries();
-    const summary = getSummary(filteredDeliveries);
+    const editing = getEditingDelivery();
+    const rows = getFilteredDeliveries();
+    const summary = getDeliverySummary();
 
     tabEls.deliveries.innerHTML = `
       <div class="section-stack">
         <div class="cards-grid">
           <div class="metric-card">
-            <span>Total filtrado</span>
-            <strong>${summary.total}</strong>
+            <span>Hoje</span>
+            <strong>${summary.todayCount}</strong>
           </div>
           <div class="metric-card">
             <span>Pendentes</span>
-            <strong>${summary.pending}</strong>
-          </div>
-          <div class="metric-card">
-            <span>Hoje</span>
-            <strong>${summary.today}</strong>
+            <strong>${summary.pendingCount}</strong>
           </div>
           <div class="metric-card">
             <span>Concluídos</span>
-            <strong>${summary.concluded}</strong>
+            <strong>${summary.completedCount}</strong>
+          </div>
+          <div class="metric-card">
+            <span>Total em entregas</span>
+            <strong>${currency(summary.totalValue)}</strong>
           </div>
         </div>
 
-        <div class="users-layout">
+        <div class="deliveries-layout">
           <div class="panel">
             <div class="section-header">
-              <h2>${state.editingDeliveryId ? 'Editar atendimento' : 'Agendar tele-entrega / recolhimento'}</h2>
-              <span class="muted">${state.editingDeliveryId ? 'Atualize os dados do atendimento.' : 'Cadastro organizado para operação rápida.'}</span>
+              <h2>${editing ? 'Editar tele-entrega / recolhimento' : 'Agendar tele-entrega / recolhimento'}</h2>
+              <span class="muted">Cadastro rápido e organizado</span>
             </div>
 
             <form id="delivery-form" class="form-grid mobile-optimized">
-              <input type="hidden" id="delivery-client-id" value="" />
+              <input type="hidden" id="delivery-client-id" value="${escapeHtml(editing?.clientId || '')}" />
 
               <div class="form-section" style="grid-column:1 / -1;">
                 <div class="form-section-title">
@@ -276,61 +398,63 @@ export function createDeliveriesModule(ctx) {
                 <div class="soft-divider"></div>
 
                 <label style="grid-column:1 / -1;">Cliente selecionado
-                  <input id="delivery-client-selected" value="" placeholder="Nenhum cliente selecionado" readonly />
+                  <input id="delivery-client-selected" readonly placeholder="Nenhum cliente selecionado" value="${editing?.clientId ? escapeHtml(`${editing.customerName || ''}${editing.phone ? ` - ${editing.phone}` : ''}`) : ''}" />
                 </label>
 
-                <div class="form-actions" style="grid-column:1 / -1; justify-content:flex-start;">
+                <div class="form-actions" style="grid-column:1 / -1;">
                   <button class="btn btn-secondary" type="button" id="delivery-client-picker-btn">Selecionar cliente</button>
                   <button class="btn btn-secondary" type="button" id="delivery-client-clear-btn">Limpar cliente</button>
                 </div>
 
                 <div class="form-grid">
-                  <label>Nome do cliente<input name="clientName" required /></label>
-                  <label>Telefone<input name="phone" required /></label>
-                  <label style="grid-column:1 / -1;">Endereço<input name="address" required /></label>
+                  <label>Nome do cliente<input name="customerName" required /></label>
+                  <label>Telefone<input name="phone" /></label>
                 </div>
               </div>
 
               <div class="form-section" style="grid-column:1 / -1;">
                 <div class="form-section-title">
-                  <h3>2. Agendamento</h3>
-                  <span>Data, hora e status</span>
+                  <h3>2. Endereço e observações</h3>
+                  <span>Local e referência</span>
                 </div>
                 <div class="soft-divider"></div>
 
                 <div class="form-grid">
-                  <label>Data<input name="date" type="date" required /></label>
-                  <label>Hora<input name="time" type="time" required /></label>
-                  <label>Status
-                    <select name="status">
-                      ${deliveryStatuses.map((item) => `<option value="${item}">${item}</option>`).join('')}
-                    </select>
-                  </label>
+                  <label>Endereço<input name="address" required /></label>
+                  <label>Referência<input name="reference" /></label>
+                  <label style="grid-column:1 / -1;">Observações<textarea name="notes"></textarea></label>
+                </div>
+              </div>
+
+              <div class="form-section" style="grid-column:1 / -1;">
+                <div class="form-section-title">
+                  <h3>3. Agendamento</h3>
+                  <span>Valor, pagamento e status</span>
+                </div>
+                <div class="soft-divider"></div>
+
+                <div class="form-grid">
+                  <label>Data<input name="scheduledDate" type="date" required /></label>
+                  <label>Hora<input name="scheduledTime" type="time" /></label>
                   <label>Forma de pagamento
                     <select name="paymentMethod">
                       ${paymentMethods.map((item) => `<option value="${item}">${item}</option>`).join('')}
                     </select>
                   </label>
-                </div>
-              </div>
-
-              <div class="form-section" style="grid-column:1 / -1;">
-                <div class="form-section-title">
-                  <h3>3. Atendimento</h3>
-                  <span>Descrição e valor</span>
-                </div>
-                <div class="soft-divider"></div>
-
-                <div class="form-grid">
-                  <label>Valor cobrado<input name="amount" type="number" step="0.01" min="0" value="0" /></label>
-                  <label style="grid-column:1 / -1;">Descrição<textarea name="description" required></textarea></label>
-                  <label style="grid-column:1 / -1;">Observações<textarea name="notes"></textarea></label>
+                  <label>Status
+                    <select name="status">
+                      ${deliveryStatuses.map((item) => `<option value="${item}">${item}</option>`).join('')}
+                    </select>
+                  </label>
+                  <label>Total
+                    <input name="totalAmount" type="number" step="0.01" min="0" />
+                  </label>
                 </div>
               </div>
 
               <div class="form-actions" style="grid-column:1 / -1;">
-                <button class="btn btn-primary" type="submit">${state.editingDeliveryId ? 'Salvar' : 'Criar agendamento'}</button>
-                <button class="btn btn-secondary" id="delivery-reset-btn" type="button">Limpar</button>
+                <button class="btn btn-primary" type="submit">${editing ? 'Salvar alterações' : 'Agendar operação'}</button>
+                <button class="btn btn-secondary" type="button" id="delivery-reset-btn">Limpar</button>
               </div>
             </form>
           </div>
@@ -339,20 +463,25 @@ export function createDeliveriesModule(ctx) {
             <div class="table-card">
               <div class="section-header">
                 <h2>Agenda</h2>
-                <span class="muted">${filteredDeliveries.length} resultado(s)</span>
+                <span class="muted">${rows.length} resultado(s)</span>
               </div>
 
-              <div class="search-row" style="margin-bottom:14px; flex-wrap:wrap;">
-                <input id="delivery-filter-date" type="date" value="${deliveryFilters.date || ''}" />
+              <div class="search-row" style="margin-bottom:14px;">
                 <select id="delivery-filter-status">
                   <option value="">Todos os status</option>
-                  ${deliveryStatuses.map((item) => `<option value="${item}" ${deliveryFilters.status === item ? 'selected' : ''}>${item}</option>`).join('')}
+                  ${deliveryStatuses.map((item) => `<option value="${item}" ${filters.status === item ? 'selected' : ''}>${item}</option>`).join('')}
                 </select>
-                <input id="delivery-filter-client" placeholder="Cliente" value="${escapeHtml(deliveryFilters.client || '')}" />
-                <input id="delivery-filter-phone" placeholder="Telefone" value="${escapeHtml(deliveryFilters.phone || '')}" />
+
+                <input id="delivery-filter-customer" placeholder="Cliente" value="${escapeHtml(filters.customer)}" />
+                <input id="delivery-filter-phone" placeholder="Telefone" value="${escapeHtml(filters.phone)}" />
+
+                <select id="delivery-filter-period">
+                  <option value="">Todos os períodos</option>
+                  <option value="today" ${filters.period === 'today' ? 'selected' : ''}>Hoje</option>
+                  <option value="pending" ${filters.period === 'pending' ? 'selected' : ''}>Pendentes</option>
+                </select>
+
                 <button class="btn btn-secondary" type="button" id="delivery-filter-apply">Filtrar</button>
-                <button class="btn btn-secondary" type="button" id="delivery-filter-today">Hoje</button>
-                <button class="btn btn-secondary" type="button" id="delivery-filter-pending">Pendentes</button>
                 <button class="btn btn-secondary" type="button" id="delivery-filter-clear">Limpar filtros</button>
               </div>
 
@@ -360,8 +489,8 @@ export function createDeliveriesModule(ctx) {
                 <table>
                   <thead>
                     <tr>
-                      <th>Cliente</th>
                       <th>Data</th>
+                      <th>Cliente</th>
                       <th>Telefone</th>
                       <th>Status</th>
                       <th>Valor</th>
@@ -369,47 +498,41 @@ export function createDeliveriesModule(ctx) {
                     </tr>
                   </thead>
                   <tbody>
-                    ${filteredDeliveries.map((item) => `
+                    ${rows.map((item) => `
                       <tr>
-                        <td>${escapeHtml(item.clientName)}</td>
-                        <td>${formatDate(item.scheduledAt)} ${item.time || ''}</td>
-                        <td>${escapeHtml(item.phone)}</td>
-                        <td><span class="tag ${deliveryStatusClass(item.status)}">${item.status}</span></td>
-                        <td>${currency(item.amount)}</td>
-                        <td>
-                          <div class="clean-table-actions">
-                            <button class="btn btn-secondary" type="button" data-delivery-edit="${item.id}">Editar</button>
-                            <button class="btn btn-success" type="button" data-delivery-status="${item.id}:Concluído">Concluir</button>
-                            <button class="btn btn-danger" type="button" data-delivery-status="${item.id}:Cancelado">Cancelar</button>
-                            <button class="btn btn-secondary" type="button" data-delivery-status="${item.id}:Em rota">Iniciar</button>
-                            <button class="btn btn-secondary" type="button" data-delivery-status="${item.id}:Reagendado">Reagendar</button>
-                          </div>
-                        </td>
+                        <td>${item.scheduledAt ? formatDate(item.scheduledAt) : '-'}</td>
+                        <td>${escapeHtml(item.customerName || '-')}</td>
+                        <td>${escapeHtml(item.phone || '-')}</td>
+                        <td><span class="tag ${getStatusTagClass(item.status)}">${escapeHtml(item.status || '-')}</span></td>
+                        <td>${currency(item.totalAmount || 0)}</td>
+                        <td>${renderDeliveryActions(item)}</td>
                       </tr>
-                    `).join('') || '<tr><td colspan="6">Nenhum atendimento encontrado.</td></tr>'}
+                    `).join('') || '<tr><td colspan="6">Nenhuma operação encontrada.</td></tr>'}
                   </tbody>
                 </table>
               </div>
             </div>
 
-            <div class="card summary-highlight">
+            <div class="panel summary-highlight">
               <div class="section-header">
-                <h3>Visão rápida</h3>
+                <h2>Visão rápida</h2>
                 <span class="badge-soft">Operação</span>
               </div>
 
-              <div class="kpi-inline">
+              <div class="cards-grid" style="grid-template-columns:1fr; gap:12px;">
                 <div class="compact-card">
                   <span class="muted">Pendentes</span>
-                  <strong>${summary.pending}</strong>
+                  <strong>${summary.pendingCount}</strong>
                 </div>
-                <div class="compact-card">
-                  <span class="muted">Hoje</span>
-                  <strong>${summary.today}</strong>
-                </div>
+
                 <div class="compact-card">
                   <span class="muted">Concluídos</span>
-                  <strong>${summary.concluded}</strong>
+                  <strong>${summary.completedCount}</strong>
+                </div>
+
+                <div class="compact-card">
+                  <span class="muted">Hoje</span>
+                  <strong>${summary.todayCount}</strong>
                 </div>
               </div>
             </div>
@@ -419,7 +542,7 @@ export function createDeliveriesModule(ctx) {
     `;
 
     const form = tabEls.deliveries.querySelector('#delivery-form');
-    fillEditingForm(form);
+    fillForm(form, editing);
     bindEvents();
   }
 

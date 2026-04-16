@@ -1,74 +1,142 @@
 <!doctype html>
 <html lang="pt-BR">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Gestão Comercial</title>
-  <link rel="manifest" href="./manifest.webmanifest">
-  <meta name="theme-color" content="#2563eb">
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="apple-mobile-web-app-title" content="Gestão Comercial">
-  <link rel="apple-touch-icon" href="./assets/icons/icon-192.png">
-  <link rel="stylesheet" href="./assets/css/style.css">
-  <link rel="stylesheet" href="./assets/css/theme-additions.css">
+  <meta name="theme-color" content="#0b1220" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="stylesheet" href="./assets/css/style.css" />
 </head>
 <body>
-  <div id="app-root">
-    <div id="login-screen" class="screen active">
-      <div class="auth-shell">
-        <div class="auth-card">
-          <h1>Gestão Comercial</h1>
-          <p class="muted">Entre com seu usuário autorizado.</p>
-          <form id="login-form" class="form-grid">
-            <label>E-mail<input name="email" type="email" required></label>
-            <label>Senha<input name="password" type="password" required></label>
-            <button class="btn btn-primary" type="submit">Entrar</button>
-          </form>
+  <section id="login-screen" class="auth-shell active">
+    <div class="auth-card">
+      <h1>Gestão Comercial</h1>
+      <p>Entre com sua conta para acessar o sistema.</p>
+
+      <form id="login-form" class="form-grid" style="grid-template-columns:1fr;">
+        <label>
+          E-mail
+          <input type="email" name="email" required />
+        </label>
+
+        <label>
+          Senha
+          <input type="password" name="password" required />
+        </label>
+
+        <div class="form-actions">
+          <button class="btn btn-primary" type="submit">Entrar</button>
+        </div>
+      </form>
+    </div>
+  </section>
+
+  <section id="app-screen" class="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar-top">
+        <div class="brand-block">
+          <div class="brand-title" id="store-name-side">Minha Loja</div>
+          <div class="brand-subtitle">Gestão Comercial</div>
+        </div>
+        <button class="sidebar-toggle desktop-only" id="sidebar-toggle" type="button">☰</button>
+      </div>
+
+      <div class="sidebar-user">
+        <strong id="current-user-name">Usuário</strong>
+        <span>Conta autenticada</span>
+      </div>
+
+      <nav id="main-nav" class="nav-list">
+        <button class="nav-item active" data-tab="dashboard" type="button">
+          <span class="nav-item-icon">🏠</span>
+          <span class="nav-item-label">Dashboard</span>
+        </button>
+
+        <button class="nav-item" data-tab="sales" type="button">
+          <span class="nav-item-icon">💳</span>
+          <span class="nav-item-label">Vendas</span>
+        </button>
+
+        <button class="nav-item" data-tab="products" type="button">
+          <span class="nav-item-icon">📦</span>
+          <span class="nav-item-label">Produtos</span>
+        </button>
+
+        <button class="nav-item" data-tab="reports" type="button">
+          <span class="nav-item-icon">📊</span>
+          <span class="nav-item-label">Relatórios</span>
+        </button>
+
+        <button class="nav-item" data-tab="deliveries" type="button">
+          <span class="nav-item-icon">🛵</span>
+          <span class="nav-item-label">Tele-entregas</span>
+        </button>
+
+        <button class="nav-item" data-tab="clients" type="button">
+          <span class="nav-item-icon">👥</span>
+          <span class="nav-item-label">Clientes</span>
+        </button>
+
+        <button class="nav-item" data-tab="suppliers" type="button">
+          <span class="nav-item-icon">🏭</span>
+          <span class="nav-item-label">Fornecedores</span>
+        </button>
+
+        <button class="nav-item" data-tab="purchases" type="button">
+          <span class="nav-item-icon">🧾</span>
+          <span class="nav-item-label">Compras</span>
+        </button>
+
+        <button class="nav-item" data-tab="payables" type="button">
+          <span class="nav-item-icon">💰</span>
+          <span class="nav-item-label">Contas a pagar</span>
+        </button>
+
+        <button class="nav-item" data-tab="users" type="button">
+          <span class="nav-item-icon">🔐</span>
+          <span class="nav-item-label">Usuários</span>
+        </button>
+
+        <button class="nav-item" data-tab="settings" type="button">
+          <span class="nav-item-icon">⚙️</span>
+          <span class="nav-item-label">Configurações</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <button id="logout-btn" class="btn btn-secondary" type="button">Sair</button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="topbar">
+        <div class="topbar-left">
+          <button class="sidebar-toggle mobile-only" id="mobile-sidebar-toggle" type="button">☰</button>
+          <h1 id="page-title">Dashboard</h1>
+          <p id="page-subtitle">Área: Dashboard.</p>
+        </div>
+
+        <div class="topbar-actions">
+          <div class="alert-anchor">
+            <button id="stock-alert-btn" class="btn btn-secondary icon-badge" type="button">
+              🔔
+              <span id="stock-alert-count" class="icon-badge-count">0</span>
+            </button>
+
+            <div id="alerts-panel" class="alerts-panel hidden">
+              <div class="section-header" style="margin-bottom:10px;">
+                <h3>Alertas</h3>
+              </div>
+              <div id="stock-alert-list"></div>
+            </div>
+          </div>
+
+          <button id="install-app-btn" class="btn btn-secondary hidden" type="button">Instalar app</button>
         </div>
       </div>
-    </div>
 
-    <div id="app-screen" class="screen">
-      <aside class="sidebar">
-        <div class="brand">
-          <strong id="store-name-side">Gestão Comercial</strong>
-          <span id="current-user-name" class="muted"></span>
-        </div>
-        <nav id="main-nav" class="nav-list">
-          <button class="nav-item active" data-tab="dashboard">Dashboard</button>
-          <button class="nav-item" data-tab="sales">Vendas</button>
-          <button class="nav-item" data-tab="products">Produtos</button>
-          <button class="nav-item" data-tab="reports">Relatórios</button>
-          <button class="nav-item" data-tab="deliveries">Tele-entregas</button>
-          <button class="nav-item" data-tab="clients">Clientes</button>
-          <button class="nav-item" data-tab="suppliers">Fornecedores</button>
-          <button class="nav-item" data-tab="purchases">Compras</button>
-          <button class="nav-item" data-tab="payables">Contas a pagar</button>
-          <button class="nav-item" data-tab="users">Usuários</button>
-          <button class="nav-item" data-tab="settings">Configurações</button>
-        </nav>
-        <div class="sidebar-footer"><button id="logout-btn" class="btn btn-secondary">Sair</button></div>
-      </aside>
-
-      <main class="main">
-        <header class="topbar">
-          <div>
-            <h2 id="page-title">Dashboard</h2>
-            <p id="page-subtitle" class="muted">Visão geral do sistema.</p>
-          </div>
-          <div class="topbar-actions">
-            <button id="install-app-btn" class="btn btn-secondary hidden" type="button">Instalar app</button>
-            <button id="stock-alert-btn" class="icon-btn" type="button"><span>🔔</span><span id="stock-alert-count" class="badge">0</span></button>
-          </div>
-        </header>
-
-        <section id="alerts-panel" class="dropdown-panel hidden">
-          <div class="section-header"><h3>Alertas</h3></div>
-          <div id="stock-alert-list"></div>
-        </section>
-
+      <div class="content">
         <section id="tab-dashboard" class="tab-panel active"></section>
         <section id="tab-sales" class="tab-panel"></section>
         <section id="tab-products" class="tab-panel"></section>
@@ -80,11 +148,13 @@
         <section id="tab-payables" class="tab-panel"></section>
         <section id="tab-users" class="tab-panel"></section>
         <section id="tab-settings" class="tab-panel"></section>
-      </main>
-    </div>
-  </div>
+      </div>
+    </main>
+  </section>
+
   <div id="modal-root"></div>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
   <script type="module" src="./assets/js/app.js"></script>
 </body>
 </html>

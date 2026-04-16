@@ -1090,3 +1090,186 @@ tbody tr:hover {
     position: static;
   }
 }
+
+/* RESPONSIVIDADE GLOBAL DAS ABAS */
+
+.section-stack {
+  display: grid;
+  gap: 18px;
+}
+
+.clean-table-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.form-section {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.form-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.form-section-title h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.form-section-title span {
+  color: var(--text-soft);
+  font-size: 0.88rem;
+}
+
+.soft-divider {
+  height: 1px;
+  background: var(--line);
+  margin: 4px 0 2px;
+}
+
+.compact-card {
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.kpi-inline {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.kpi-inline .compact-card strong {
+  display: block;
+  font-size: 1.05rem;
+  margin-top: 6px;
+}
+
+.sticky-summary {
+  position: sticky;
+  top: 92px;
+}
+
+.form-subgrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.summary-highlight {
+  border: 1px solid rgba(25, 211, 255, 0.18);
+  background: linear-gradient(180deg, rgba(25, 211, 255, 0.08), rgba(255, 255, 255, 0.02));
+}
+
+.badge-soft {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text-soft);
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.mobile-optimized input,
+.mobile-optimized select,
+.mobile-optimized textarea,
+.mobile-optimized button {
+  min-height: 46px;
+}
+
+@media (max-width: 1180px) {
+  .users-layout,
+  .products-layout,
+  .deliveries-layout,
+  .settings-layout,
+  .dashboard-grid,
+  .sales-layout,
+  .grid-2 {
+    grid-template-columns: 1fr !important;
+  }
+
+  .sticky-summary {
+    position: static;
+  }
+
+  .kpi-inline {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 920px) {
+  .form-subgrid,
+  .kpi-inline,
+  .form-grid,
+  .settings-grid,
+  .permission-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .section-header,
+  .form-section-title,
+  .summary-line,
+  .cart-line {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .clean-table-actions,
+  .inline-row,
+  .cart-actions,
+  .form-actions,
+  .search-row {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .clean-table-actions > *,
+  .inline-row > *,
+  .cart-actions > *,
+  .form-actions > *,
+  .search-row > * {
+    width: 100%;
+  }
+
+  .panel,
+  .card,
+  .table-card,
+  .metric-card {
+    padding: 16px;
+  }
+}
+
+@media (max-width: 720px) {
+  .main {
+    padding: 10px;
+  }
+
+  .content {
+    width: 100%;
+  }
+
+  .stats-grid,
+  .cards-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .table-wrap {
+    overflow-x: auto;
+  }
+
+  table {
+    min-width: 640px;
+  }
+}

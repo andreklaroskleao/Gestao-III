@@ -15,215 +15,271 @@ export function createPurchasesModule(ctx) {
     auditModule
   } = ctx;
 
-  let orderItems = [];
   let filters = {
     supplier: '',
-    status: ''
+    status: '',
+    dateFrom: '',
+    dateTo: ''
   };
 
-  function getFilteredOrders() {
-    return (state.purchaseOrders || [])
-      .filter((item) => {
-        const supplier = String(item.supplierName || '').toLowerCase();
-
-        return (!filters.supplier || supplier.includes(filters.supplier.toLowerCase()))
-          && (!filters.status || String(item.status || '') === filters.status);
-      })
-      .sort((a, b) => {
-        const da = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : new Date(a.createdAt || 0).getTime();
-        const db = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : new Date(b.createdAt || 0).getTime();
-        return db - da;
-      });
+  function getRows() {
+    return state.purchases || [];
   }
 
-  function getOrderTotal(items = orderItems) {
-    return items.reduce((sum, item) => {
-      return sum + (Number(item.quantity || 0) * Number(item.costPrice || 0));
-    }, 0);
+  function getFilteredRows() {
+    return getRows().filter((item) => {
+      const supplier = String(item.supplierName || '').toLowerCase();
+      const status = String(item.status || '');
+
+      const receivedDate = normalizeDate(item.receivedDate || item.receivedAt);
+
+      return (!filters.supplier || supplier.includes(filters.supplier.toLowerCase()))
+        && (!filters.status || status === filters.status)
+        && (!filters.dateFrom || !receivedDate || receivedDate >= filters.dateFrom)
+        && (!filters.dateTo || !receivedDate || receivedDate <= filters.dateTo);
+    });
   }
 
-  function renderOrderItems() {
-    if (!orderItems.length) {
-      return '<div class="empty-state">Nenhum item adicionado ao pedido.</div>';
+  function normalizeDate(value) {
+    if (!value) return '';
+
+    if (typeof value === 'string') {
+      if (value.includes('T')) {
+        const dt = new Date(value);
+        if (!Number.isNaN(dt.getTime())) {
+          return formatDateKey(dt);
+        }
+      }
+      return value.slice(0, 10);
     }
 
-    return `
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Produto</th>
-              <th>Qtd</th>
-              <th>Custo</th>
-              <th>Total</th>
-              <th>Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${orderItems.map((item, index) => `
-              <tr>
-                <td>${escapeHtml(item.productName || '-')}</td>
-                <td>${item.quantity}</td>
-                <td>${currency(item.costPrice || 0)}</td>
-                <td>${currency((item.quantity || 0) * (item.costPrice || 0))}</td>
-                <td>
-                  <button class="btn btn-danger" type="button" data-order-remove="${index}">Remover</button>
-                </td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      </div>
-    `;
-  }
-
-  async function createPurchaseOrder(payload) {
-    if (!orderItems.length) {
-      throw new Error('Adicione ao menos um item ao pedido.');
+    if (value?.toDate) {
+      return formatDateKey(value.toDate());
     }
 
-    const data = {
-      supplierId: payload.supplierId || '',
-      supplierName: String(payload.supplierName || '').trim(),
-      notes: String(payload.notes || '').trim(),
-      expectedDate: payload.expectedDate || '',
-      status: 'Aberto',
-      items: orderItems.map((item) => ({
-        productId: item.productId || '',
-        productName: item.productName || '',
-        quantity: Number(item.quantity || 0),
-        costPrice: Number(item.costPrice || 0)
-      })),
-      totalAmount: getOrderTotal(orderItems),
-      createdAt: new Date(),
-      createdById: state.currentUser?.uid || '',
-      createdByName: state.currentUser?.fullName || ''
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) {
+      return formatDateKey(parsed);
+    }
+
+    return '';
+  }
+
+  function formatDateKey(date) {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  }
+
+  function getSummary() {
+    const rows = getRows();
+    return {
+      total: rows.length,
+      received: rows.filter((item) => item.status === 'Recebida').length,
+      pending: rows.filter((item) => item.status !== 'Recebida').length,
+      totalValue: rows.reduce((sum, item) => sum + Number(item.totalAmount || 0), 0)
     };
+  }
 
-    const createdId = await createDoc(refs.purchaseOrders, data);
+  function getEditingPurchase() {
+    return getRows().find((item) => item.id === state.editingPurchaseId) || null;
+  }
+
+  function fillForm(form, row) {
+    if (!form) return;
+
+    form.elements.supplierName.value = row?.supplierName || '';
+    form.elements.description.value = row?.description || '';
+    form.elements.documentNumber.value = row?.documentNumber || '';
+    form.elements.receivedDate.value = row?.receivedDate || normalizeDate(row?.receivedAt) || '';
+    form.elements.totalAmount.value = row?.totalAmount ?? '';
+    form.elements.paymentCondition.value = row?.paymentCondition || 'À vista';
+    form.elements.status.value = row?.status || 'Pendente';
+    form.elements.notes.value = row?.notes || '';
+  }
+
+  function buildPayablePayload(purchase) {
+    return {
+      supplierName: purchase.supplierName || '',
+      description: purchase.description || 'Compra de fornecedor',
+      documentNumber: purchase.documentNumber || '',
+      dueDate: purchase.receivedDate || '',
+      totalAmount: Number(purchase.totalAmount || 0),
+      paidAmount: purchase.paymentCondition === 'À vista' ? Number(purchase.totalAmount || 0) : 0,
+      openAmount: purchase.paymentCondition === 'À vista' ? 0 : Number(purchase.totalAmount || 0),
+      notes: `Gerado automaticamente a partir da compra ${purchase.documentNumber || purchase.description || ''}`.trim(),
+      sourcePurchaseId: purchase.id || '',
+      deleted: false
+    };
+  }
+
+  async function ensurePayableForPurchase(purchase) {
+    if (!purchase || purchase.paymentCondition === 'À vista') return;
+
+    const existing = (state.accountsPayable || []).find((item) => item.sourcePurchaseId === purchase.id);
+    if (existing) return;
+
+    const payload = buildPayablePayload(purchase);
+    const createdId = await createDoc(refs.accountsPayable, payload);
 
     await auditModule.log({
       module: 'purchases',
-      action: 'create_order',
-      entityType: 'purchase_order',
+      action: 'generate_payable',
+      entityType: 'account_payable',
       entityId: createdId,
-      entityLabel: data.supplierName || 'Pedido de compra',
-      description: 'Pedido de compra criado.',
-      metadata: {
-        totalAmount: data.totalAmount,
-        items: data.items.length
-      }
+      entityLabel: payload.description,
+      description: 'Conta a pagar gerada a partir da compra.'
     });
-
-    orderItems = [];
-    showToast('Pedido de compra criado.', 'success');
   }
 
-  async function receivePurchase(orderId, paidNow = 0, dueDate = '') {
-    const order = (state.purchaseOrders || []).find((item) => item.id === orderId);
+  async function handleSubmit(event) {
+    event.preventDefault();
 
-    if (!order) {
-      throw new Error('Pedido não encontrado.');
-    }
+    const form = event.currentTarget;
+    const payload = Object.fromEntries(new FormData(form).entries());
 
-    if (String(order.status || '') === 'Recebido') {
-      throw new Error('Este pedido já foi recebido.');
-    }
+    payload.totalAmount = toNumber(payload.totalAmount);
+    payload.deleted = false;
 
-    const totalAmount = Number(order.totalAmount || 0);
-    const paidAmount = toNumber(paidNow);
-    const openAmount = Math.max(0, totalAmount - paidAmount);
+    try {
+      if (state.editingPurchaseId) {
+        const current = getEditingPurchase();
 
-    for (const item of order.items || []) {
-      if (item.productId) {
-        await inventoryModule.registerMovement({
-          productId: item.productId,
-          type: 'entrada',
-          quantity: Number(item.quantity || 0),
-          reason: `Recebimento de compra do fornecedor ${order.supplierName || ''}`,
-          notes: `Pedido de compra ${orderId}`
+        await updateByPath('purchases', state.editingPurchaseId, payload);
+
+        await auditModule.log({
+          module: 'purchases',
+          action: 'update',
+          entityType: 'purchase',
+          entityId: state.editingPurchaseId,
+          entityLabel: payload.description || current?.description || '',
+          description: 'Compra atualizada.'
         });
+
+        state.editingPurchaseId = null;
+        showToast('Compra atualizada.', 'success');
+      } else {
+        const createdId = await createDoc(refs.purchases, payload);
+
+        await auditModule.log({
+          module: 'purchases',
+          action: 'create',
+          entityType: 'purchase',
+          entityId: createdId,
+          entityLabel: payload.description || '',
+          description: 'Compra cadastrada.'
+        });
+
+        showToast('Compra cadastrada.', 'success');
       }
+
+      form.reset();
+      render();
+    } catch (error) {
+      console.error(error);
+      alert(error.message || 'Erro ao salvar compra.');
     }
-
-    const purchaseId = await createDoc(refs.purchases, {
-      purchaseOrderId: orderId,
-      supplierId: order.supplierId || '',
-      supplierName: order.supplierName || '',
-      items: order.items || [],
-      totalAmount,
-      paidAmount,
-      openAmount,
-      dueDate: dueDate || '',
-      receivedAt: new Date(),
-      receivedById: state.currentUser?.uid || '',
-      receivedByName: state.currentUser?.fullName || ''
-    });
-
-    await updateByPath('purchase_orders', orderId, {
-      status: 'Recebido',
-      purchaseId
-    });
-
-    if (openAmount > 0) {
-      await payablesModule.createPayable({
-        supplierId: order.supplierId || '',
-        supplierName: order.supplierName || '',
-        description: `Compra recebida do pedido ${orderId}`,
-        totalAmount,
-        paidAmount,
-        dueDate: dueDate || '',
-        paymentMethod: 'Boleto',
-        notes: `Gerado automaticamente a partir do pedido ${orderId}`
-      });
-    }
-
-    await auditModule.log({
-      module: 'purchases',
-      action: 'receive_order',
-      entityType: 'purchase_order',
-      entityId: orderId,
-      entityLabel: order.supplierName || 'Pedido de compra',
-      description: 'Pedido de compra recebido.',
-      metadata: {
-        purchaseId,
-        totalAmount,
-        paidAmount,
-        openAmount
-      }
-    });
-
-    showToast('Compra recebida com sucesso.', 'success');
   }
 
-  function renderReceiveModal(orderId) {
-    const order = (state.purchaseOrders || []).find((item) => item.id === orderId);
-    if (!order) return;
+  async function receivePurchase(purchaseId) {
+    const row = getRows().find((item) => item.id === purchaseId);
+    if (!row) return;
+
+    if (String(row.status || '') === 'Recebida') {
+      showToast('Esta compra já foi recebida.', 'info');
+      return;
+    }
+
+    try {
+      await updateByPath('purchases', purchaseId, {
+        status: 'Recebida'
+      });
+
+      await inventoryModule.createSimpleMovement?.({
+        type: 'entrada',
+        reason: `Recebimento de compra: ${row.description || row.documentNumber || row.id}`,
+        quantity: 0
+      });
+
+      await auditModule.log({
+        module: 'purchases',
+        action: 'receive',
+        entityType: 'purchase',
+        entityId: purchaseId,
+        entityLabel: row.description || '',
+        description: 'Compra marcada como recebida.'
+      });
+
+      await ensurePayableForPurchase({
+        ...row,
+        id: purchaseId,
+        status: 'Recebida'
+      });
+
+      showToast('Compra recebida.', 'success');
+    } catch (error) {
+      console.error(error);
+      alert(error.message || 'Erro ao receber compra.');
+    }
+  }
+
+  function openDetailsModal(purchaseId) {
+    const row = getRows().find((item) => item.id === purchaseId);
+    if (!row) return;
 
     const modalRoot = document.getElementById('modal-root');
     if (!modalRoot) return;
 
     modalRoot.innerHTML = `
-      <div class="modal-backdrop" id="purchase-modal-backdrop">
-        <div class="modal-card">
+      <div class="modal-backdrop" id="purchase-details-modal-backdrop">
+        <div class="modal-card sale-details-modal-card">
           <div class="section-header">
-            <h2>Receber compra</h2>
-            <button class="btn btn-secondary" type="button" id="purchase-modal-close">Fechar</button>
+            <h2>Detalhes da compra</h2>
+            <button class="btn btn-secondary" type="button" id="purchase-details-modal-close">Fechar</button>
           </div>
 
-          <div class="card" style="margin-bottom:16px;">
-            <strong>${escapeHtml(order.supplierName || '-')}</strong>
-            <p class="muted">Total do pedido: ${currency(order.totalAmount || 0)}</p>
-            <p class="muted">Itens: ${(order.items || []).length}</p>
-          </div>
-
-          <form id="purchase-receive-form" class="form-grid">
-            <label>Valor pago agora<input name="paidNow" type="number" min="0" step="0.01" value="0" /></label>
-            <label>Vencimento do saldo<input name="dueDate" type="date" /></label>
-            <div class="form-actions" style="grid-column:1 / -1;">
-              <button class="btn btn-primary" type="submit">Confirmar recebimento</button>
+          <div class="sale-details-grid">
+            <div class="sale-details-box">
+              <span>Fornecedor</span>
+              <strong>${escapeHtml(row.supplierName || '-')}</strong>
             </div>
-          </form>
+            <div class="sale-details-box">
+              <span>Status</span>
+              <strong>${escapeHtml(row.status || '-')}</strong>
+            </div>
+            <div class="sale-details-box">
+              <span>Data</span>
+              <strong>${escapeHtml(row.receivedDate || normalizeDate(row.receivedAt) || '-')}</strong>
+            </div>
+            <div class="sale-details-box">
+              <span>Total</span>
+              <strong>${currency(row.totalAmount || 0)}</strong>
+            </div>
+            <div class="sale-details-box">
+              <span>Condição</span>
+              <strong>${escapeHtml(row.paymentCondition || '-')}</strong>
+            </div>
+            <div class="sale-details-box">
+              <span>Documento</span>
+              <strong>${escapeHtml(row.documentNumber || '-')}</strong>
+            </div>
+          </div>
+
+          <div class="table-card" style="padding:14px;">
+            <div class="section-header">
+              <h3>Descrição</h3>
+            </div>
+            <div class="empty-state" style="padding:14px;">
+              ${escapeHtml(row.description || '-')}
+            </div>
+          </div>
+
+          <div class="table-card" style="padding:14px; margin-top:14px;">
+            <div class="section-header">
+              <h3>Observações</h3>
+            </div>
+            <div class="empty-state" style="padding:14px;">
+              ${escapeHtml(row.notes || '-')}
+            </div>
+          </div>
         </div>
       </div>
     `;
@@ -232,166 +288,97 @@ export function createPurchasesModule(ctx) {
       modalRoot.innerHTML = '';
     };
 
-    modalRoot.querySelector('#purchase-modal-close').addEventListener('click', closeModal);
-    modalRoot.querySelector('#purchase-modal-backdrop').addEventListener('click', (event) => {
-      if (event.target.id === 'purchase-modal-backdrop') {
+    modalRoot.querySelector('#purchase-details-modal-close').addEventListener('click', closeModal);
+    modalRoot.querySelector('#purchase-details-modal-backdrop').addEventListener('click', (event) => {
+      if (event.target.id === 'purchase-details-modal-backdrop') {
         closeModal();
-      }
-    });
-
-    modalRoot.querySelector('#purchase-receive-form').addEventListener('submit', async (event) => {
-      event.preventDefault();
-
-      try {
-        const values = Object.fromEntries(new FormData(event.currentTarget).entries());
-        await receivePurchase(orderId, values.paidNow, values.dueDate);
-        closeModal();
-        render();
-      } catch (error) {
-        alert(error.message || 'Erro ao receber compra.');
       }
     });
   }
 
-  function bindItemEvents() {
-    tabEls.purchases.querySelectorAll('[data-order-remove]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        orderItems.splice(Number(btn.dataset.orderRemove), 1);
-        render();
-      });
-    });
+  function renderPurchaseActions(row) {
+    return `
+      <div class="actions-inline-compact">
+        <button
+          class="icon-action-btn success"
+          type="button"
+          data-purchase-receive="${row.id}"
+          title="Receber"
+          aria-label="Receber"
+        >📥</button>
+
+        <button
+          class="icon-action-btn info"
+          type="button"
+          data-purchase-view="${row.id}"
+          title="Detalhes"
+          aria-label="Detalhes"
+        >👁️</button>
+
+        <details class="actions-menu">
+          <summary
+            class="icon-action-btn"
+            title="Mais ações"
+            aria-label="Mais ações"
+          >⋯</summary>
+          <div class="actions-menu-popover">
+            <button
+              class="btn btn-secondary"
+              type="button"
+              data-purchase-edit="${row.id}"
+            >Editar</button>
+          </div>
+        </details>
+      </div>
+    `;
   }
 
   function bindEvents() {
-    tabEls.purchases.querySelector('#purchase-add-item-btn').addEventListener('click', () => {
-      const productId = tabEls.purchases.querySelector('#purchase-item-product-id').value || '';
-      const productName = tabEls.purchases.querySelector('#purchase-item-product-name').value || '';
-      const quantity = toNumber(tabEls.purchases.querySelector('#purchase-item-quantity').value || 0);
-      const costPrice = toNumber(tabEls.purchases.querySelector('#purchase-item-cost').value || 0);
+    const form = tabEls.purchases.querySelector('#purchase-form');
+    form.addEventListener('submit', handleSubmit);
 
-      if (!productName || quantity <= 0 || costPrice < 0) {
-        alert('Preencha produto, quantidade e custo corretamente.');
-        return;
-      }
-
-      orderItems.push({
-        productId,
-        productName,
-        quantity,
-        costPrice
-      });
-
-      tabEls.purchases.querySelector('#purchase-item-product-id').value = '';
-      tabEls.purchases.querySelector('#purchase-item-product-name').value = '';
-      tabEls.purchases.querySelector('#purchase-item-quantity').value = '';
-      tabEls.purchases.querySelector('#purchase-item-cost').value = '';
-
+    tabEls.purchases.querySelector('#purchase-reset-btn')?.addEventListener('click', () => {
+      state.editingPurchaseId = null;
+      form.reset();
       render();
     });
 
-    tabEls.purchases.querySelector('#purchase-form').addEventListener('submit', async (event) => {
-      event.preventDefault();
-
-      try {
-        const values = Object.fromEntries(new FormData(event.currentTarget).entries());
-        await createPurchaseOrder(values);
-        event.currentTarget.reset();
-        render();
-      } catch (error) {
-        alert(error.message || 'Erro ao criar pedido de compra.');
-      }
-    });
-
-    tabEls.purchases.querySelector('#purchase-filter-apply').addEventListener('click', () => {
-      filters.supplier = tabEls.purchases.querySelector('#purchase-filter-supplier').value || '';
-      filters.status = tabEls.purchases.querySelector('#purchase-filter-status').value || '';
+    tabEls.purchases.querySelector('#purchase-filter-apply')?.addEventListener('click', () => {
+      filters.supplier = tabEls.purchases.querySelector('#purchase-filter-supplier')?.value || '';
+      filters.status = tabEls.purchases.querySelector('#purchase-filter-status')?.value || '';
+      filters.dateFrom = tabEls.purchases.querySelector('#purchase-filter-date-from')?.value || '';
+      filters.dateTo = tabEls.purchases.querySelector('#purchase-filter-date-to')?.value || '';
       render();
     });
 
-    tabEls.purchases.querySelector('#purchase-filter-clear').addEventListener('click', () => {
+    tabEls.purchases.querySelector('#purchase-filter-clear')?.addEventListener('click', () => {
       filters = {
         supplier: '',
-        status: ''
+        status: '',
+        dateFrom: '',
+        dateTo: ''
       };
       render();
+    });
+
+    tabEls.purchases.querySelectorAll('[data-purchase-edit]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        state.editingPurchaseId = btn.dataset.purchaseEdit;
+        render();
+      });
     });
 
     tabEls.purchases.querySelectorAll('[data-purchase-receive]').forEach((btn) => {
       btn.addEventListener('click', () => {
-        renderReceiveModal(btn.dataset.purchaseReceive);
+        receivePurchase(btn.dataset.purchaseReceive);
       });
     });
 
-    tabEls.purchases.querySelector('#purchase-product-picker-btn').addEventListener('click', () => {
-      const modalRoot = document.getElementById('modal-root');
-      if (!modalRoot) return;
-
-      modalRoot.innerHTML = `
-        <div class="modal-backdrop" id="purchase-product-modal-backdrop">
-          <div class="modal-card">
-            <div class="section-header">
-              <h2>Selecionar produto</h2>
-              <button class="btn btn-secondary" type="button" id="purchase-product-modal-close">Fechar</button>
-            </div>
-
-            <div class="search-row">
-              <input id="purchase-product-search" placeholder="Buscar produto" />
-            </div>
-
-            <div id="purchase-product-results" class="stack-list slim-list" style="margin-top:12px;"></div>
-          </div>
-        </div>
-      `;
-
-      const closeModal = () => {
-        modalRoot.innerHTML = '';
-      };
-
-      modalRoot.querySelector('#purchase-product-modal-close').addEventListener('click', closeModal);
-      modalRoot.querySelector('#purchase-product-modal-backdrop').addEventListener('click', (event) => {
-        if (event.target.id === 'purchase-product-modal-backdrop') {
-          closeModal();
-        }
+    tabEls.purchases.querySelectorAll('[data-purchase-view]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        openDetailsModal(btn.dataset.purchaseView);
       });
-
-      const searchInput = modalRoot.querySelector('#purchase-product-search');
-      const resultsEl = modalRoot.querySelector('#purchase-product-results');
-
-      const renderResults = () => {
-        const term = String(searchInput.value || '').toLowerCase();
-
-        const rows = (state.products || [])
-          .filter((item) => String(item.name || '').toLowerCase().includes(term))
-          .slice(0, 20);
-
-        resultsEl.innerHTML = rows.map((item) => `
-          <div class="list-item">
-            <strong>${escapeHtml(item.name || '-')}</strong>
-            <span>Custo atual: ${currency(item.costPrice || 0)} · Estoque: ${item.quantity || 0}</span>
-            <div class="inline-row" style="margin-top:8px;">
-              <button class="btn btn-primary" type="button" data-product-pick="${item.id}">Selecionar</button>
-            </div>
-          </div>
-        `).join('') || '<div class="empty-state">Nenhum produto encontrado.</div>';
-
-        resultsEl.querySelectorAll('[data-product-pick]').forEach((btn) => {
-          btn.addEventListener('click', () => {
-            const product = (state.products || []).find((item) => item.id === btn.dataset.productPick);
-            if (!product) return;
-
-            tabEls.purchases.querySelector('#purchase-item-product-id').value = product.id;
-            tabEls.purchases.querySelector('#purchase-item-product-name').value = product.name || '';
-            tabEls.purchases.querySelector('#purchase-item-cost').value = Number(product.costPrice || 0);
-            closeModal();
-          });
-        });
-      };
-
-      searchInput.addEventListener('input', renderResults);
-      renderResults();
     });
-
-    bindItemEvents();
   }
 
   function render() {
@@ -400,161 +387,201 @@ export function createPurchasesModule(ctx) {
       return;
     }
 
-    const rows = getFilteredOrders();
-    const total = getOrderTotal();
+    const editing = getEditingPurchase();
+    const rows = getFilteredRows();
+    const summary = getSummary();
 
     tabEls.purchases.innerHTML = `
       <div class="section-stack">
+        <div class="cards-grid">
+          <div class="metric-card">
+            <span>Total de compras</span>
+            <strong>${summary.total}</strong>
+          </div>
+          <div class="metric-card">
+            <span>Recebidas</span>
+            <strong>${summary.received}</strong>
+          </div>
+          <div class="metric-card">
+            <span>Pendentes</span>
+            <strong>${summary.pending}</strong>
+          </div>
+          <div class="metric-card">
+            <span>Valor total</span>
+            <strong>${currency(summary.totalValue)}</strong>
+          </div>
+        </div>
+
         <div class="users-layout">
           <div class="panel">
             <div class="section-header">
-              <h2>Pedido de compra</h2>
-              <span class="muted">Cadastro mais limpo e organizado</span>
+              <h2>${editing ? 'Editar compra' : 'Cadastrar compra'}</h2>
+              <span class="muted">${editing ? 'Atualize os dados da compra.' : 'Cadastro e recebimento de compras.'}</span>
             </div>
 
-            <form id="purchase-form" class="form-grid">
+            <form id="purchase-form" class="form-grid mobile-optimized">
               <div class="form-section" style="grid-column:1 / -1;">
                 <div class="form-section-title">
-                  <h3>1. Dados do pedido</h3>
-                  <span>Fornecedor e observações</span>
+                  <h3>1. Identificação</h3>
+                  <span>Fornecedor e documento</span>
                 </div>
                 <div class="soft-divider"></div>
 
                 <div class="form-grid">
                   <label>Fornecedor
-                    <input name="supplierName" list="suppliers-purchase-datalist" required />
+                    <input name="supplierName" list="purchase-suppliers-datalist" required />
+                    <datalist id="purchase-suppliers-datalist">
+                      ${(state.suppliers || [])
+                        .filter((item) => item.active !== false)
+                        .map((item) => `<option value="${escapeHtml(item.name || '')}"></option>`)
+                        .join('')}
+                    </datalist>
                   </label>
 
-                  <datalist id="suppliers-purchase-datalist">
-                    ${(state.suppliers || [])
-                      .filter((item) => item.active !== false)
-                      .map((item) => `<option value="${escapeHtml(item.name || '')}"></option>`)
-                      .join('')}
-                  </datalist>
+                  <label>Documento
+                    <input name="documentNumber" />
+                  </label>
 
-                  <label>Previsão de entrega<input name="expectedDate" type="date" /></label>
-                  <label style="grid-column:1 / -1;">Observações<textarea name="notes"></textarea></label>
+                  <label style="grid-column:1 / -1;">Descrição
+                    <input name="description" required />
+                  </label>
                 </div>
               </div>
 
               <div class="form-section" style="grid-column:1 / -1;">
                 <div class="form-section-title">
-                  <h3>2. Adicionar item</h3>
-                  <span>Monte o pedido item por item</span>
+                  <h3>2. Financeiro</h3>
+                  <span>Valor, data e condição</span>
                 </div>
                 <div class="soft-divider"></div>
 
-                <input type="hidden" id="purchase-item-product-id" />
+                <div class="form-grid">
+                  <label>Data
+                    <input name="receivedDate" type="date" required />
+                  </label>
 
-                <div class="form-subgrid">
-                  <input id="purchase-item-product-name" placeholder="Produto" />
-                  <button class="btn btn-secondary" type="button" id="purchase-product-picker-btn">Selecionar produto</button>
-                  <input id="purchase-item-quantity" type="number" min="1" step="1" placeholder="Qtd" />
-                  <input id="purchase-item-cost" type="number" min="0" step="0.01" placeholder="Custo" />
-                </div>
+                  <label>Total
+                    <input name="totalAmount" type="number" step="0.01" min="0" required />
+                  </label>
 
-                <div class="form-actions">
-                  <button class="btn btn-secondary" type="button" id="purchase-add-item-btn">Adicionar item</button>
+                  <label>Condição de pagamento
+                    <select name="paymentCondition">
+                      <option value="À vista">À vista</option>
+                      <option value="A prazo">A prazo</option>
+                    </select>
+                  </label>
+
+                  <label>Status
+                    <select name="status">
+                      <option value="Pendente">Pendente</option>
+                      <option value="Recebida">Recebida</option>
+                    </select>
+                  </label>
+
+                  <label style="grid-column:1 / -1;">Observações
+                    <textarea name="notes"></textarea>
+                  </label>
                 </div>
               </div>
 
               <div class="form-actions" style="grid-column:1 / -1;">
-                <button class="btn btn-primary" type="submit">Criar pedido de compra</button>
+                <button class="btn btn-primary" type="submit">${editing ? 'Salvar compra' : 'Cadastrar compra'}</button>
+                <button class="btn btn-secondary" type="button" id="purchase-reset-btn">Limpar</button>
               </div>
             </form>
           </div>
 
-          <div class="section-stack sticky-summary">
-            <div class="card summary-highlight">
-              <div class="section-header">
-                <h3>Resumo do pedido</h3>
-                <span class="badge-soft">${orderItems.length} item(ns)</span>
-              </div>
-
-              <div class="kpi-inline">
-                <div class="compact-card">
-                  <span class="muted">Itens</span>
-                  <strong>${orderItems.length}</strong>
-                </div>
-                <div class="compact-card">
-                  <span class="muted">Quantidade</span>
-                  <strong>${orderItems.reduce((sum, item) => sum + Number(item.quantity || 0), 0)}</strong>
-                </div>
-                <div class="compact-card">
-                  <span class="muted">Total</span>
-                  <strong>${currency(total)}</strong>
-                </div>
-              </div>
-            </div>
-
+          <div class="section-stack">
             <div class="table-card">
               <div class="section-header">
-                <h3>Itens do pedido</h3>
+                <h2>Compras</h2>
+                <span class="muted">${rows.length} resultado(s)</span>
               </div>
-              ${renderOrderItems()}
+
+              <div class="search-row" style="margin-bottom:14px;">
+                <input
+                  id="purchase-filter-supplier"
+                  placeholder="Fornecedor"
+                  value="${escapeHtml(filters.supplier)}"
+                />
+
+                <select id="purchase-filter-status">
+                  <option value="">Todos os status</option>
+                  <option value="Pendente" ${filters.status === 'Pendente' ? 'selected' : ''}>Pendente</option>
+                  <option value="Recebida" ${filters.status === 'Recebida' ? 'selected' : ''}>Recebida</option>
+                </select>
+
+                <input id="purchase-filter-date-from" type="date" value="${filters.dateFrom}" />
+                <input id="purchase-filter-date-to" type="date" value="${filters.dateTo}" />
+
+                <button class="btn btn-secondary" type="button" id="purchase-filter-apply">Filtrar</button>
+                <button class="btn btn-secondary" type="button" id="purchase-filter-clear">Limpar</button>
+              </div>
+
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Fornecedor</th>
+                      <th>Descrição</th>
+                      <th>Data</th>
+                      <th>Total</th>
+                      <th>Condição</th>
+                      <th>Status</th>
+                      <th>Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${rows.map((row) => `
+                      <tr>
+                        <td>${escapeHtml(row.supplierName || '-')}</td>
+                        <td>${escapeHtml(row.description || '-')}</td>
+                        <td>${escapeHtml(row.receivedDate || normalizeDate(row.receivedAt) || '-')}</td>
+                        <td>${currency(row.totalAmount || 0)}</td>
+                        <td>${escapeHtml(row.paymentCondition || '-')}</td>
+                        <td><span class="tag ${row.status === 'Recebida' ? 'success' : 'warning'}">${escapeHtml(row.status || '-')}</span></td>
+                        <td>${renderPurchaseActions(row)}</td>
+                      </tr>
+                    `).join('') || '<tr><td colspan="7">Nenhuma compra encontrada.</td></tr>'}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
-        </div>
 
-        <div class="table-card">
-          <div class="section-header">
-            <h2>Pedidos de compra</h2>
-            <span class="muted">${rows.length} resultado(s)</span>
-          </div>
+            <div class="panel summary-highlight">
+              <div class="section-header">
+                <h2>Resumo rápido</h2>
+                <span class="badge-soft">Compras</span>
+              </div>
 
-          <div class="search-row" style="margin-bottom:14px;">
-            <input id="purchase-filter-supplier" placeholder="Fornecedor" value="${escapeHtml(filters.supplier)}" />
-            <select id="purchase-filter-status">
-              <option value="">Todos</option>
-              <option value="Aberto" ${filters.status === 'Aberto' ? 'selected' : ''}>Aberto</option>
-              <option value="Recebido" ${filters.status === 'Recebido' ? 'selected' : ''}>Recebido</option>
-            </select>
-            <button class="btn btn-secondary" type="button" id="purchase-filter-apply">Filtrar</button>
-            <button class="btn btn-secondary" type="button" id="purchase-filter-clear">Limpar</button>
-          </div>
+              <div class="cards-grid" style="grid-template-columns:1fr; gap:12px;">
+                <div class="compact-card">
+                  <span class="muted">Recebidas</span>
+                  <strong>${summary.received}</strong>
+                </div>
 
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Fornecedor</th>
-                  <th>Previsão</th>
-                  <th>Status</th>
-                  <th>Total</th>
-                  <th>Itens</th>
-                  <th>Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${rows.map((item) => `
-                  <tr>
-                    <td>${escapeHtml(item.supplierName || '-')}</td>
-                    <td>${escapeHtml(item.expectedDate || '-')}</td>
-                    <td><span class="tag ${String(item.status || '') === 'Recebido' ? 'success' : 'info'}">${escapeHtml(item.status || '-')}</span></td>
-                    <td>${currency(item.totalAmount || 0)}</td>
-                    <td>${(item.items || []).length}</td>
-                    <td>
-                      <div class="clean-table-actions">
-                        ${String(item.status || '') !== 'Recebido'
-                          ? `<button class="btn btn-primary" type="button" data-purchase-receive="${item.id}">Receber compra</button>`
-                          : '<span class="badge-soft">Finalizado</span>'}
-                      </div>
-                    </td>
-                  </tr>
-                `).join('') || '<tr><td colspan="6">Nenhum pedido encontrado.</td></tr>'}
-              </tbody>
-            </table>
+                <div class="compact-card">
+                  <span class="muted">Pendentes</span>
+                  <strong>${summary.pending}</strong>
+                </div>
+
+                <div class="compact-card">
+                  <span class="muted">Valor total</span>
+                  <strong>${currency(summary.totalValue)}</strong>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
     `;
 
+    const form = tabEls.purchases.querySelector('#purchase-form');
+    fillForm(form, editing);
     bindEvents();
   }
 
   return {
-    render,
-    createPurchaseOrder,
-    receivePurchase
+    render
   };
 }

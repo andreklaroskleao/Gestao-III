@@ -197,21 +197,14 @@ export function createSalesModule(ctx) {
     }, 120);
   }
 
-  async function handleBarcodeReadAction() {
-    if (!isMobileDevice()) {
-      focusSearchInput();
-      showToast('No desktop, use o leitor USB no campo de busca.', 'info');
-      return;
-    }
-
-    await startCameraScan();
+  function getScannerModalRoot() {
+    return document.getElementById('modal-root');
   }
 
   function getScannerElements() {
     return {
-      scannerCard: document.getElementById('scanner-card'),
-      video: document.getElementById('barcode-video'),
-      status: document.getElementById('barcode-status')
+      video: document.getElementById('sale-barcode-video'),
+      status: document.getElementById('sale-barcode-status')
     };
   }
 
@@ -223,27 +216,67 @@ export function createSalesModule(ctx) {
     status.dataset.type = type;
   }
 
-  function showScannerCard() {
-    const { scannerCard } = getScannerElements();
-    if (scannerCard) {
-      scannerCard.style.display = 'block';
+  function openScannerModal() {
+    const modalRoot = getScannerModalRoot();
+    if (!modalRoot) return;
+
+    modalRoot.innerHTML = `
+      <div class="modal-backdrop" id="sale-barcode-modal-backdrop">
+        <div class="modal-card">
+          <div class="section-header">
+            <h2>Ler código de barras</h2>
+            <button class="btn btn-secondary" type="button" id="sale-barcode-modal-close">Fechar</button>
+          </div>
+
+          <div class="scanner-card">
+            <video id="sale-barcode-video" class="video-preview" autoplay muted playsinline></video>
+            <div id="sale-barcode-status" class="auth-hint" style="margin-top:10px;">Aguardando câmera...</div>
+            <div class="form-actions" style="margin-top:10px;">
+              <button class="btn btn-secondary" type="button" id="sale-barcode-stop-btn">Parar leitura</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const closeModal = () => {
+      closeScannerModal();
+    };
+
+    modalRoot.querySelector('#sale-barcode-modal-close').addEventListener('click', closeModal);
+    modalRoot.querySelector('#sale-barcode-stop-btn').addEventListener('click', closeModal);
+    modalRoot.querySelector('#sale-barcode-modal-backdrop').addEventListener('click', (event) => {
+      if (event.target.id === 'sale-barcode-modal-backdrop') {
+        closeModal();
+      }
+    });
+  }
+
+  function closeScannerModal() {
+    const modalRoot = getScannerModalRoot();
+    stopCameraScan();
+    if (modalRoot) {
+      modalRoot.innerHTML = '';
     }
   }
 
-  function hideScannerCard() {
-    const { scannerCard } = getScannerElements();
-    if (scannerCard) {
-      scannerCard.style.display = 'none';
+  async function handleBarcodeReadAction() {
+    if (!isMobileDevice()) {
+      focusSearchInput();
+      showToast('No desktop, use o leitor USB no campo de busca.', 'info');
+      return;
     }
+
+    openScannerModal();
+    await startCameraScan();
   }
 
   async function startCameraScan() {
     if (!isMobileDevice()) return;
     if (cameraRunning) return;
 
-    showScannerCard();
     setScannerStatus('Abrindo câmera traseira...', 'info');
-    stopCameraScan(false);
+    stopCameraScan();
 
     try {
       if ('BarcodeDetector' in window) {
@@ -259,8 +292,9 @@ export function createSalesModule(ctx) {
         await startZxingScan();
       } catch (fallbackError) {
         console.error('Erro no fallback ZXing:', fallbackError);
-        stopCameraScan(true);
+        stopCameraScan();
         showToast('Não foi possível iniciar a leitura pela câmera.', 'error');
+        closeScannerModal();
       }
     }
   }
@@ -301,10 +335,11 @@ export function createSalesModule(ctx) {
 
         if (found) {
           setScannerStatus(`Código lido: ${value}`, 'success');
-          stopCameraScan(true);
+          showToast('Código lido com sucesso.', 'success');
+          closeScannerModal();
         } else {
           setScannerStatus(`Código não cadastrado: ${value}`, 'error');
-          stopCameraScan(true);
+          closeScannerModal();
           handleNotFoundBarcode(value);
         }
       } catch (error) {
@@ -342,10 +377,11 @@ export function createSalesModule(ctx) {
 
           if (found) {
             setScannerStatus(`Código lido: ${value}`, 'success');
-            stopCameraScan(true);
+            showToast('Código lido com sucesso.', 'success');
+            closeScannerModal();
           } else {
             setScannerStatus(`Código não cadastrado: ${value}`, 'error');
-            stopCameraScan(true);
+            closeScannerModal();
             handleNotFoundBarcode(value);
           }
         }
@@ -357,7 +393,7 @@ export function createSalesModule(ctx) {
     );
   }
 
-  function stopCameraScan(hideCard = true) {
+  function stopCameraScan() {
     if (scanTimer) {
       window.clearInterval(scanTimer);
       scanTimer = null;
@@ -388,10 +424,6 @@ export function createSalesModule(ctx) {
     }
 
     cameraRunning = false;
-
-    if (hideCard) {
-      hideScannerCard();
-    }
   }
 
   function renderCartItems() {
@@ -622,7 +654,7 @@ ${(sale.items || []).map((item) => `- ${item.name} | Qtd: ${item.quantity} | Uni
       }
 
       if (event.key === 'Escape') {
-        stopCameraScan(true);
+        closeScannerModal();
       }
     });
   }
@@ -669,22 +701,11 @@ ${(sale.items || []).map((item) => `- ${item.name} | Qtd: ${item.quantity} | Uni
 
               <div class="auth-hint" style="margin-top:10px;">
                 ${mobile
-                  ? 'No celular, use a câmera traseira para leitura. Se o código não existir, o sistema avisará.'
+                  ? 'No celular, toque em "Ler código de barras" para abrir a câmera em modal.'
                   : 'No computador: F2 busca, F4 limpa carrinho, F9 finaliza venda.'}
               </div>
 
               <div id="sale-search-results" class="stack-list slim-list" style="margin-top:14px;"></div>
-
-              ${mobile ? `
-                <div class="scanner-card" id="scanner-card" style="margin-top:14px; display:none;">
-                  <h3>Leitura de código de barras</h3>
-                  <video id="barcode-video" class="video-preview" autoplay muted playsinline></video>
-                  <div id="barcode-status" class="auth-hint" style="margin-top:10px;">Aguardando câmera...</div>
-                  <div class="inline-row" style="margin-top:10px;">
-                    <button id="stop-scan-btn" class="btn btn-secondary" type="button">Parar leitura</button>
-                  </div>
-                </div>
-              ` : ''}
             </div>
 
             <div class="table-card">
@@ -797,9 +818,6 @@ ${(sale.items || []).map((item) => `- ${item.name} | Qtd: ${item.quantity} | Uni
 
     if (mobile) {
       tabEls.sales.querySelector('#camera-scan-btn').addEventListener('click', handleBarcodeReadAction);
-      tabEls.sales.querySelector('#stop-scan-btn').addEventListener('click', () => {
-        stopCameraScan(true);
-      });
     }
 
     tabEls.sales.querySelector('#sale-client-picker-btn')?.addEventListener('click', () => {

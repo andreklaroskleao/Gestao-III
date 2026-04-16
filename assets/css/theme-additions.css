@@ -1,0 +1,5 @@
+body.theme-dark{--surface:#111827;--surface-2:#0f172a;--text:#f8fafc;--text-soft:#94a3b8;--border:#334155;background:#020617}
+body.theme-dark table,body.theme-dark input,body.theme-dark select,body.theme-dark textarea,body.theme-dark .modal-card,body.theme-dark .dropdown-panel{background:#111827;color:#f8fafc}
+body.theme-dark thead th{background:#0f172a}body.theme-dark .btn-secondary{background:#334155;color:#f8fafc}
+.mini-chart{display:grid;grid-template-columns:repeat(7,1fr);gap:12px;align-items:end;margin-top:16px}.mini-chart-col{display:flex;flex-direction:column;align-items:center;gap:8px}.mini-chart-bar-wrap{width:100%;height:170px;display:flex;align-items:end;justify-content:center}.mini-chart-bar{width:100%;max-width:44px;border-radius:12px 12px 0 0;background:linear-gradient(180deg,rgba(59,130,246,.95),rgba(37,99,235,.8));min-height:2px}.mini-chart-label,.mini-chart-value{font-size:12px;text-align:center}
+@media (max-width:768px){.mini-chart{grid-template-columns:repeat(7,minmax(48px,1fr));overflow-x:auto;padding-bottom:8px}.mini-chart-bar-wrap{height:140px}}

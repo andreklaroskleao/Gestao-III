@@ -1,0 +1,69 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function currentUserDoc() { return get(/databases/$(database)/documents/users/$(request.auth.uid)); }
+    function currentUserExists() { return signedIn() && currentUserDoc().exists(); }
+    function isActive() { return currentUserExists() && currentUserDoc().data.active == true && currentUserDoc().data.deleted != true; }
+    function accessLevel() { return currentUserDoc().data.accessLevel; }
+    function isMaster() { return isActive() && accessLevel() == "master"; }
+    function isAdmin() { return isActive() && (accessLevel() == "master" || accessLevel() == "admin"); }
+    function hasPermission(area) {
+      return isAdmin() || (isActive() && currentUserDoc().data.permissions is list && currentUserDoc().data.permissions.hasAny([area]));
+    }
+    function canDashboard() { return hasPermission("dashboard"); }
+    function canSales() { return hasPermission("sales"); }
+    function canProducts() { return hasPermission("products"); }
+    function canReports() { return hasPermission("reports"); }
+    function canDeliveries() { return hasPermission("deliveries"); }
+    function canClients() { return hasPermission("clients"); }
+    function canSuppliers() { return hasPermission("suppliers"); }
+    function canPurchases() { return hasPermission("purchases"); }
+    function canPayables() { return hasPermission("payables"); }
+    function canUsers() { return isAdmin(); }
+    function canSettings() { return isAdmin(); }
+    function targetUserIsMaster() { return resource != null && resource.data.accessLevel == "master"; }
+    function requestCreatesMaster() { return request.resource.data.accessLevel == "master"; }
+    function requestPromotesToMaster() { return resource != null && resource.data.accessLevel != "master" && request.resource.data.accessLevel == "master"; }
+    function isOwnUser(userId) { return signedIn() && request.auth.uid == userId; }
+    function validUserCreate() {
+      return request.resource.data.fullName is string
+        && request.resource.data.username is string
+        && request.resource.data.email is string
+        && request.resource.data.role is string
+        && request.resource.data.accessLevel is string
+        && request.resource.data.permissions is list
+        && request.resource.data.active is bool
+        && request.resource.data.deleted is bool;
+    }
+    function validUserUpdate() { return validUserCreate(); }
+    function onlySafeSelfFieldsChanged() {
+      return request.resource.data.diff(resource.data).changedKeys().hasOnly(["fullName","username","email","updatedAt"]);
+    }
+
+    match /users/{userId} {
+      allow read: if isActive() && canUsers();
+      allow create: if (isMaster() && validUserCreate()) || (isAdmin() && !requestCreatesMaster() && validUserCreate());
+      allow update: if (isMaster() && validUserUpdate())
+        || (isAdmin() && !targetUserIsMaster() && !requestPromotesToMaster() && validUserUpdate())
+        || (isOwnUser(userId) && isActive() && onlySafeSelfFieldsChanged());
+      allow delete: if false;
+    }
+
+    match /products/{id} { allow read: if isActive() && (canProducts() || canSales() || canReports()); allow create, update: if isActive() && canProducts(); allow delete: if false; }
+    match /sales/{id} { allow read: if isActive() && (canSales() || canReports() || canDashboard()); allow create: if isActive() && canSales(); allow update, delete: if false; }
+    match /deliveries/{id} { allow read: if isActive() && (canDeliveries() || canReports() || canDashboard()); allow create, update: if isActive() && canDeliveries(); allow delete: if false; }
+    match /settings/{id} { allow read, create, update: if isActive() && canSettings(); allow delete: if false; }
+    match /inventory_movements/{id} { allow read: if isActive() && (canProducts() || canReports()); allow create: if isActive() && canProducts(); allow update, delete: if false; }
+    match /audit_logs/{id} { allow read: if isActive() && (canSettings() || canReports()); allow create: if isActive(); allow update, delete: if false; }
+    match /clients/{id} { allow read: if isActive() && (canClients() || canSales() || canDeliveries() || canReports()); allow create, update: if isActive() && (canClients() || canSales() || canDeliveries()); allow delete: if false; }
+    match /suppliers/{id} { allow read: if isActive() && (canSuppliers() || canProducts() || canReports() || canPurchases() || canPayables()); allow create, update: if isActive() && canSuppliers(); allow delete: if false; }
+    match /cash_sessions/{id} { allow read: if isActive() && (canSettings() || canReports()); allow create, update: if isActive() && canSettings(); allow delete: if false; }
+    match /accounts_receivable/{id} { allow read: if isActive() && (canClients() || canReports() || canSettings() || canDashboard()); allow create, update: if isActive() && canClients(); allow delete: if false; }
+    match /accounts_payable/{id} { allow read: if isActive() && (canPayables() || canReports() || canSettings() || canDashboard()); allow create, update: if isActive() && canPayables(); allow delete: if false; }
+    match /purchase_orders/{id} { allow read: if isActive() && (canPurchases() || canReports() || canSettings()); allow create, update: if isActive() && canPurchases(); allow delete: if false; }
+    match /purchases/{id} { allow read: if isActive() && (canPurchases() || canReports() || canSettings()); allow create: if isActive() && canPurchases(); allow update, delete: if false; }
+    match /{document=**} { allow read, write: if false; }
+  }
+}

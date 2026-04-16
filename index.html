@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Gestão Comercial</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <meta name="theme-color" content="#2563eb">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Gestão Comercial">
+  <link rel="apple-touch-icon" href="./assets/icons/icon-192.png">
+  <link rel="stylesheet" href="./assets/css/style.css">
+  <link rel="stylesheet" href="./assets/css/theme-additions.css">
+</head>
+<body>
+  <div id="app-root">
+    <div id="login-screen" class="screen active">
+      <div class="auth-shell">
+        <div class="auth-card">
+          <h1>Gestão Comercial</h1>
+          <p class="muted">Entre com seu usuário autorizado.</p>
+          <form id="login-form" class="form-grid">
+            <label>E-mail<input name="email" type="email" required></label>
+            <label>Senha<input name="password" type="password" required></label>
+            <button class="btn btn-primary" type="submit">Entrar</button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div id="app-screen" class="screen">
+      <aside class="sidebar">
+        <div class="brand">
+          <strong id="store-name-side">Gestão Comercial</strong>
+          <span id="current-user-name" class="muted"></span>
+        </div>
+        <nav id="main-nav" class="nav-list">
+          <button class="nav-item active" data-tab="dashboard">Dashboard</button>
+          <button class="nav-item" data-tab="sales">Vendas</button>
+          <button class="nav-item" data-tab="products">Produtos</button>
+          <button class="nav-item" data-tab="reports">Relatórios</button>
+          <button class="nav-item" data-tab="deliveries">Tele-entregas</button>
+          <button class="nav-item" data-tab="clients">Clientes</button>
+          <button class="nav-item" data-tab="suppliers">Fornecedores</button>
+          <button class="nav-item" data-tab="purchases">Compras</button>
+          <button class="nav-item" data-tab="payables">Contas a pagar</button>
+          <button class="nav-item" data-tab="users">Usuários</button>
+          <button class="nav-item" data-tab="settings">Configurações</button>
+        </nav>
+        <div class="sidebar-footer"><button id="logout-btn" class="btn btn-secondary">Sair</button></div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div>
+            <h2 id="page-title">Dashboard</h2>
+            <p id="page-subtitle" class="muted">Visão geral do sistema.</p>
+          </div>
+          <div class="topbar-actions">
+            <button id="install-app-btn" class="btn btn-secondary hidden" type="button">Instalar app</button>
+            <button id="stock-alert-btn" class="icon-btn" type="button"><span>🔔</span><span id="stock-alert-count" class="badge">0</span></button>
+          </div>
+        </header>
+
+        <section id="alerts-panel" class="dropdown-panel hidden">
+          <div class="section-header"><h3>Alertas</h3></div>
+          <div id="stock-alert-list"></div>
+        </section>
+
+        <section id="tab-dashboard" class="tab-panel active"></section>
+        <section id="tab-sales" class="tab-panel"></section>
+        <section id="tab-products" class="tab-panel"></section>
+        <section id="tab-reports" class="tab-panel"></section>
+        <section id="tab-deliveries" class="tab-panel"></section>
+        <section id="tab-clients" class="tab-panel"></section>
+        <section id="tab-suppliers" class="tab-panel"></section>
+        <section id="tab-purchases" class="tab-panel"></section>
+        <section id="tab-payables" class="tab-panel"></section>
+        <section id="tab-users" class="tab-panel"></section>
+        <section id="tab-settings" class="tab-panel"></section>
+      </main>
+    </div>
+  </div>
+  <div id="modal-root"></div>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script type="module" src="./assets/js/app.js"></script>
+</body>
+</html>

@@ -3,8 +3,8 @@ import { escapeHtml, showToast } from './ui.js';
 export function createSalesModule(ctx) {
   const {
     state,
-    tabEls,
     refs,
+    tabEls,
     createDoc,
     updateByPath,
     currency,
@@ -573,84 +573,110 @@ export function createSalesModule(ctx) {
     });
   }
 
-  function showSaleDetailsById(saleId) {
+  function showSaleDetailsModal(saleId) {
     const sale = (state.sales || []).find((item) => item.id === saleId);
     if (!sale) return;
 
-    const details = `
-Cliente: ${sale.customerName || 'Balcão'}
-Pagamento: ${sale.paymentMethod || '-'}
-Subtotal: ${currency(sale.subtotal)}
-Desconto: ${currency(sale.discount)}
-Total: ${currency(sale.total)}
-Valor pago: ${currency(sale.amountPaid)}
-Troco: ${currency(sale.change)}
+    const modalRoot = document.getElementById('modal-root');
+    if (!modalRoot) return;
 
-Itens:
-${(sale.items || []).map((item) => `- ${item.name} | Qtd: ${item.quantity} | Unit: ${currency(item.unitPrice)} | Total: ${currency(item.total)}`).join('\n')}
-    `.trim();
+    modalRoot.innerHTML = `
+      <div class="modal-backdrop" id="sale-details-modal-backdrop">
+        <div class="modal-card sale-details-modal-card">
+          <div class="section-header">
+            <h2>Detalhes da venda</h2>
+            <button class="btn btn-secondary" type="button" id="sale-details-modal-close">Fechar</button>
+          </div>
 
-    alert(details);
+          <div class="sale-details-grid">
+            <div class="sale-details-box">
+              <span>Cliente</span>
+              <strong>${escapeHtml(sale.customerName || 'Balcão')}</strong>
+            </div>
+
+            <div class="sale-details-box">
+              <span>Data</span>
+              <strong>${formatDateTime(sale.createdAt)}</strong>
+            </div>
+
+            <div class="sale-details-box">
+              <span>Pagamento</span>
+              <strong>${escapeHtml(sale.paymentMethod || '-')}</strong>
+            </div>
+
+            <div class="sale-details-box">
+              <span>Subtotal</span>
+              <strong>${currency(sale.subtotal || 0)}</strong>
+            </div>
+
+            <div class="sale-details-box">
+              <span>Desconto</span>
+              <strong>${currency(sale.discount || 0)}</strong>
+            </div>
+
+            <div class="sale-details-box">
+              <span>Total</span>
+              <strong>${currency(sale.total || 0)}</strong>
+            </div>
+
+            <div class="sale-details-box">
+              <span>Valor pago</span>
+              <strong>${currency(sale.amountPaid || 0)}</strong>
+            </div>
+
+            <div class="sale-details-box">
+              <span>Troco</span>
+              <strong>${currency(sale.change || 0)}</strong>
+            </div>
+
+            <div class="sale-details-box">
+              <span>Itens</span>
+              <strong>${sale.items?.length || 0}</strong>
+            </div>
+          </div>
+
+          <div class="table-card" style="padding:14px;">
+            <div class="section-header">
+              <h3>Itens da venda</h3>
+              <button class="btn btn-primary" type="button" id="sale-details-reprint-btn">Reimprimir</button>
+            </div>
+
+            <div class="sale-items-list">
+              ${(sale.items || []).map((item) => `
+                <div class="sale-item-card">
+                  <div class="sale-item-title">${escapeHtml(item.name || '-')}</div>
+                  <div class="sale-item-meta">
+                    <span><strong>Quantidade:</strong> ${Number(item.quantity || 0)}</span>
+                    <span><strong>Unitário:</strong> ${currency(item.unitPrice || 0)}</span>
+                    <span><strong>Total:</strong> ${currency(item.total || 0)}</span>
+                  </div>
+                </div>
+              `).join('') || '<div class="empty-state">Nenhum item encontrado.</div>'}
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const closeModal = () => {
+      modalRoot.innerHTML = '';
+    };
+
+    modalRoot.querySelector('#sale-details-modal-close').addEventListener('click', closeModal);
+    modalRoot.querySelector('#sale-details-reprint-btn').addEventListener('click', () => {
+      printReceipt(sale);
+    });
+    modalRoot.querySelector('#sale-details-modal-backdrop').addEventListener('click', (event) => {
+      if (event.target.id === 'sale-details-modal-backdrop') {
+        closeModal();
+      }
+    });
   }
 
   function reprintSaleById(saleId) {
     const sale = (state.sales || []).find((item) => item.id === saleId);
     if (!sale) return;
     printReceipt(sale);
-  }
-
-  function renderHistoryModalContent() {
-    const filteredSales = getFilteredSales();
-    const host = document.getElementById('sales-history-modal-host');
-    if (!host) return;
-
-    host.innerHTML = `
-      <div class="search-row" style="margin-bottom:14px;">
-        <input id="sales-filter-customer-modal" placeholder="Cliente" value="${escapeHtml(saleFilters.customer)}" />
-        <select id="sales-filter-payment-modal">
-          <option value="">Todas as formas</option>
-          ${paymentMethods.map((item) => `<option value="${item}" ${saleFilters.paymentMethod === item ? 'selected' : ''}>${item}</option>`).join('')}
-        </select>
-        <input id="sales-filter-date-from-modal" type="date" value="${saleFilters.dateFrom}" />
-        <input id="sales-filter-date-to-modal" type="date" value="${saleFilters.dateTo}" />
-        <button class="btn btn-secondary" type="button" id="sales-filter-apply-modal">Filtrar</button>
-        <button class="btn btn-secondary" type="button" id="sales-filter-clear-modal">Limpar</button>
-      </div>
-
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Data</th>
-              <th>Cliente</th>
-              <th>Total</th>
-              <th>Pagamento</th>
-              <th>Itens</th>
-              <th>Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${filteredSales.slice(0, 100).map((sale) => `
-              <tr>
-                <td>${formatDateTime(sale.createdAt)}</td>
-                <td>${escapeHtml(sale.customerName || 'Balcão')}</td>
-                <td>${currency(sale.total)}</td>
-                <td>${escapeHtml(sale.paymentMethod || '-')}</td>
-                <td>${sale.items?.length || 0}</td>
-                <td>
-                  <div class="clean-table-actions">
-                    <button class="btn btn-secondary" type="button" data-sale-view-modal="${sale.id}">Detalhes</button>
-                    <button class="btn btn-primary" type="button" data-sale-reprint-modal="${sale.id}">Reimprimir</button>
-                  </div>
-                </td>
-              </tr>
-            `).join('') || '<tr><td colspan="6">Nenhuma venda registrada.</td></tr>'}
-          </tbody>
-        </table>
-      </div>
-    `;
-
-    bindHistoryModalEvents();
   }
 
   function bindHistoryModalEvents() {
@@ -674,7 +700,7 @@ ${(sale.items || []).map((item) => `- ${item.name} | Qtd: ${item.quantity} | Uni
 
     document.querySelectorAll('[data-sale-view-modal]').forEach((btn) => {
       btn.addEventListener('click', () => {
-        showSaleDetailsById(btn.dataset.saleViewModal);
+        showSaleDetailsModal(btn.dataset.saleViewModal);
       });
     });
 
@@ -685,13 +711,106 @@ ${(sale.items || []).map((item) => `- ${item.name} | Qtd: ${item.quantity} | Uni
     });
   }
 
+  function renderHistoryModalContent() {
+    const filteredSales = getFilteredSales();
+    const host = document.getElementById('sales-history-modal-host');
+    if (!host) return;
+
+    host.innerHTML = `
+      <div class="sales-history-filters">
+        <input
+          id="sales-filter-customer-modal"
+          class="field-span-2"
+          placeholder="Cliente"
+          value="${escapeHtml(saleFilters.customer)}"
+        />
+
+        <select id="sales-filter-payment-modal" class="field-span-1">
+          <option value="">Todas as formas</option>
+          ${paymentMethods.map((item) => `<option value="${item}" ${saleFilters.paymentMethod === item ? 'selected' : ''}>${item}</option>`).join('')}
+        </select>
+
+        <input
+          id="sales-filter-date-from-modal"
+          class="field-span-1"
+          type="date"
+          value="${saleFilters.dateFrom}"
+        />
+
+        <input
+          id="sales-filter-date-to-modal"
+          class="field-span-1"
+          type="date"
+          value="${saleFilters.dateTo}"
+        />
+
+        <button class="btn btn-secondary field-span-1" type="button" id="sales-filter-apply-modal">Filtrar</button>
+        <button class="btn btn-secondary field-span-1" type="button" id="sales-filter-clear-modal">Limpar</button>
+      </div>
+
+      <div class="sales-history-desktop-table">
+        <div class="sales-history-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Cliente</th>
+                <th>Total</th>
+                <th>Pagamento</th>
+                <th>Itens</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${filteredSales.slice(0, 100).map((sale) => `
+                <tr>
+                  <td>${formatDateTime(sale.createdAt)}</td>
+                  <td>${escapeHtml(sale.customerName || 'Balcão')}</td>
+                  <td>${currency(sale.total)}</td>
+                  <td>${escapeHtml(sale.paymentMethod || '-')}</td>
+                  <td>${sale.items?.length || 0}</td>
+                  <td>
+                    <div class="clean-table-actions">
+                      <button class="btn btn-secondary" type="button" data-sale-view-modal="${sale.id}">Detalhes</button>
+                      <button class="btn btn-primary" type="button" data-sale-reprint-modal="${sale.id}">Reimprimir</button>
+                    </div>
+                  </td>
+                </tr>
+              `).join('') || '<tr><td colspan="6">Nenhuma venda registrada.</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="sales-history-mobile-list">
+        ${filteredSales.slice(0, 100).map((sale) => `
+          <div class="sales-history-sale-card">
+            <div class="sale-card-title">${escapeHtml(sale.customerName || 'Balcão')}</div>
+            <div class="sale-card-meta">
+              <span><strong>Data:</strong> ${formatDateTime(sale.createdAt)}</span>
+              <span><strong>Total:</strong> ${currency(sale.total)}</span>
+              <span><strong>Pagamento:</strong> ${escapeHtml(sale.paymentMethod || '-')}</span>
+              <span><strong>Itens:</strong> ${sale.items?.length || 0}</span>
+            </div>
+            <div class="sale-card-actions">
+              <button class="btn btn-secondary" type="button" data-sale-view-modal="${sale.id}">Detalhes</button>
+              <button class="btn btn-primary" type="button" data-sale-reprint-modal="${sale.id}">Reimprimir</button>
+            </div>
+          </div>
+        `).join('') || '<div class="empty-state">Nenhuma venda registrada.</div>'}
+      </div>
+    `;
+
+    bindHistoryModalEvents();
+  }
+
   function openHistoryModal() {
     const modalRoot = document.getElementById('modal-root');
     if (!modalRoot) return;
 
     modalRoot.innerHTML = `
       <div class="modal-backdrop" id="sales-history-modal-backdrop">
-        <div class="modal-card" style="width:min(100%, 1100px);">
+        <div class="modal-card sales-history-modal-card">
           <div class="section-header">
             <h2>Histórico de vendas</h2>
             <button class="btn btn-secondary" type="button" id="sales-history-modal-close">Fechar</button>

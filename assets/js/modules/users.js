@@ -1,12 +1,4 @@
-import { escapeHtml, labelTab } from './ui.js';
-import {
-  ACCESS_LEVELS,
-  ensurePermissionsByRole,
-  isMaster,
-  canEditTargetUser,
-  canInactivateTargetUser,
-  canAssignAccessLevel
-} from '../services/utils.js';
+import { escapeHtml, renderBlocked, showToast } from './ui.js';
 
 export function createUsersModule(ctx) {
   const {
@@ -14,6 +6,7 @@ export function createUsersModule(ctx) {
     tabEls,
     ROLES,
     AREAS,
+    ACCESS_LEVELS,
     createManagedUser,
     updateManagedUser,
     deleteManagedUser,
@@ -27,40 +20,12 @@ export function createUsersModule(ctx) {
     status: ''
   };
 
-  function markPermissionCheckboxes(form, permissions) {
-    [...form.querySelectorAll('input[name="permissions"]')].forEach((input) => {
-      input.checked = permissions.includes(input.value);
-    });
+  function hasAccess() {
+    return Array.isArray(state.currentUser?.permissions)
+      && state.currentUser.permissions.includes('users');
   }
 
-  function getDefaultAccessLevel(role) {
-    if (role === 'Gerente') return 'manager';
-    return 'standard';
-  }
-
-  function getAllowedAccessLevels(actor) {
-    if (isMaster(actor)) {
-      return ACCESS_LEVELS;
-    }
-
-    if (actor?.accessLevel === 'admin') {
-      return ['admin', 'manager', 'standard'];
-    }
-
-    return ['standard'];
-  }
-
-  function buildAccessLevelOptions(actor, selectedValue = 'standard') {
-    return getAllowedAccessLevels(actor)
-      .map((level) => `<option value="${level}" ${selectedValue === level ? 'selected' : ''}>${level}</option>`)
-      .join('');
-  }
-
-  function getEditingUser() {
-    return (state.users || []).find((item) => item.id === state.editingUserId) || null;
-  }
-
-  function getFiltereredUsers() {
+  function getFilteredUsers() {
     return (state.users || []).filter((user) => {
       const haystack = [
         user.fullName,
@@ -70,222 +35,236 @@ export function createUsersModule(ctx) {
         user.accessLevel
       ].join(' ').toLowerCase();
 
-      const activeStatus = user.active ? 'ativo' : 'inativo';
+      const status = user.active === false ? 'inativo' : 'ativo';
 
       return (!filters.term || haystack.includes(filters.term.toLowerCase()))
-        && (!filters.role || user.role === filters.role)
-        && (!filters.status || activeStatus === filters.status);
+        && (!filters.role || String(user.role || '') === filters.role)
+        && (!filters.status || status === filters.status);
     });
   }
 
-  function buildPermissionSummary(form) {
-    const checked = [...form.querySelectorAll('input[name="permissions"]:checked')].map((input) => input.value);
-
-    const host = tabEls.users.querySelector('#user-permission-summary');
-    if (!host) return;
-
-    host.innerHTML = checked.length
-      ? checked.map((item) => `<span class="tag info">${escapeHtml(labelTab(item))}</span>`).join(' ')
-      : '<span class="muted">Nenhuma área liberada.</span>';
-
-    const countHost = tabEls.users.querySelector('#user-permission-count');
-    if (countHost) {
-      countHost.textContent = String(checked.length);
-    }
+  function getEditingUser() {
+    return (state.users || []).find((item) => item.id === state.editingUserId) || null;
   }
 
-  async function handleUserSubmit(event) {
-    event.preventDefault();
+  function buildDefaultPermissions(role, accessLevel) {
+    if (accessLevel === 'master') {
+      return [...AREAS];
+    }
 
-    const form = event.currentTarget;
-    const raw = Object.fromEntries(new FormData(form).entries());
-    const permissions = [...form.querySelectorAll('input[name="permissions"]:checked')].map((input) => input.value);
-
-    const payload = {
-      ...raw,
-      permissions,
-      active: raw.active === 'true'
+    const baseByRole = {
+      Administrador: ['dashboard', 'sales', 'products', 'reports', 'deliveries', 'clients', 'suppliers', 'purchases', 'payables', 'users', 'settings'],
+      Gerente: ['dashboard', 'sales', 'products', 'reports', 'deliveries', 'clients', 'suppliers', 'purchases', 'payables'],
+      Financeiro: ['dashboard', 'reports', 'clients', 'suppliers', 'payables'],
+      Estoquista: ['dashboard', 'products', 'suppliers', 'purchases'],
+      Vendedor: ['dashboard', 'sales', 'products', 'deliveries', 'clients']
     };
 
-    if (!canAssignAccessLevel(state.currentUser, payload.accessLevel)) {
-      throw new Error('Você não pode atribuir este nível de acesso.');
-    }
-
-    if (state.editingUserId) {
-      const current = state.users.find((item) => item.id === state.editingUserId);
-
-      await updateManagedUser(state.currentUser, state.editingUserId, payload);
-
-      await auditModule.log({
-        module: 'users',
-        action: 'update',
-        entityType: 'user',
-        entityId: state.editingUserId,
-        entityLabel: payload.fullName || current?.fullName || '',
-        description: 'Usuário atualizado.'
-      });
-    } else {
-      const createdUser = await createManagedUser(state.currentUser, payload);
-
-      await auditModule.log({
-        module: 'users',
-        action: 'create',
-        entityType: 'user',
-        entityId: createdUser?.id || '',
-        entityLabel: payload.fullName || '',
-        description: 'Usuário cadastrado.'
-      });
-    }
-
-    state.editingUserId = null;
-    state.users = await listUsers();
-    form.reset();
-    render();
+    return baseByRole[role] ? [...baseByRole[role]] : ['dashboard'];
   }
 
-  function fillEditingForm(form) {
-    if (!state.editingUserId) {
-      const role = form.elements.role.value;
-      const accessLevel = form.elements.accessLevel.value || getDefaultAccessLevel(role);
-      markPermissionCheckboxes(form, ensurePermissionsByRole(role, accessLevel));
-      buildPermissionSummary(form);
-      return;
+  function fillForm(form, user) {
+    if (!form) return;
+
+    form.elements.fullName.value = user?.fullName || '';
+    form.elements.username.value = user?.username || '';
+    form.elements.email.value = user?.email || '';
+    form.elements.role.value = user?.role || 'Vendedor';
+    form.elements.accessLevel.value = user?.accessLevel || 'standard';
+    form.elements.active.value = String(user?.active !== false);
+
+    const passwordField = form.elements.password;
+    if (passwordField) {
+      passwordField.value = '';
+      passwordField.required = !user;
     }
 
-    const editing = getEditingUser();
-    if (!editing) return;
+    const permissions = Array.isArray(user?.permissions)
+      ? user.permissions
+      : buildDefaultPermissions(user?.role || 'Vendedor', user?.accessLevel || 'standard');
 
-    form.elements.fullName.value = editing.fullName || '';
-    form.elements.username.value = editing.username || '';
-    form.elements.email.value = editing.email || '';
-    form.elements.role.value = editing.role || 'Vendedor';
-    form.elements.accessLevel.innerHTML = buildAccessLevelOptions(state.currentUser, editing.accessLevel || 'standard');
-    form.elements.accessLevel.value = editing.accessLevel || 'standard';
-    form.elements.active.value = String(Boolean(editing.active));
-    markPermissionCheckboxes(form, editing.permissions || []);
-    buildPermissionSummary(form);
+    form.querySelectorAll('input[name="permissions"]').forEach((checkbox) => {
+      checkbox.checked = permissions.includes(checkbox.value);
+    });
+  }
+
+  function collectFormPayload(form) {
+    const formData = new FormData(form);
+    const permissions = formData.getAll('permissions');
+
+    return {
+      fullName: String(formData.get('fullName') || '').trim(),
+      username: String(formData.get('username') || '').trim(),
+      email: String(formData.get('email') || '').trim(),
+      password: String(formData.get('password') || '').trim(),
+      role: String(formData.get('role') || 'Vendedor'),
+      accessLevel: String(formData.get('accessLevel') || 'standard'),
+      active: String(formData.get('active') || 'true') === 'true',
+      permissions
+    };
+  }
+
+  function getSummary() {
+    const users = state.users || [];
+    return {
+      total: users.length,
+      active: users.filter((item) => item.active !== false).length,
+      inactive: users.filter((item) => item.active === false).length,
+      admins: users.filter((item) => ['Administrador'].includes(item.role) || item.accessLevel === 'master').length
+    };
+  }
+
+  function renderPermissionChecklist(selectedRole, selectedAccessLevel) {
+    const suggested = buildDefaultPermissions(selectedRole, selectedAccessLevel);
+
+    return `
+      <div class="permission-grid">
+        ${AREAS.map((area) => `
+          <label class="permission-item">
+            <input
+              type="checkbox"
+              name="permissions"
+              value="${area}"
+              ${suggested.includes(area) ? 'checked' : ''}
+            />
+            <span>${escapeHtml(getAreaLabel(area))}</span>
+          </label>
+        `).join('')}
+      </div>
+    `;
+  }
+
+  function getAreaLabel(area) {
+    const map = {
+      dashboard: 'Dashboard',
+      sales: 'Vendas',
+      products: 'Produtos',
+      reports: 'Relatórios',
+      deliveries: 'Tele-entregas',
+      clients: 'Clientes',
+      suppliers: 'Fornecedores',
+      purchases: 'Compras',
+      payables: 'Contas a pagar',
+      users: 'Usuários',
+      settings: 'Configurações'
+    };
+
+    return map[area] || area;
+  }
+
+  function getStatusTag(user) {
+    return user.active === false
+      ? '<span class="tag warning">Inativo</span>'
+      : '<span class="tag success">Ativo</span>';
   }
 
   function renderUserActions(user) {
-    const canEdit = canEditTargetUser(state.currentUser, user);
-    const canDelete = canInactivateTargetUser(state.currentUser, user);
-
     return `
-      <div class="inline-row">
-        ${canEdit ? `<button class="btn btn-secondary" data-user-edit="${user.id}">Editar</button>` : ''}
-        ${canDelete ? `<button class="btn btn-danger" data-user-delete="${user.id}">Inativar</button>` : ''}
+      <div class="actions-inline-compact">
+        <button
+          class="icon-action-btn"
+          type="button"
+          data-user-edit="${user.id}"
+          title="Editar"
+          aria-label="Editar"
+        >✏️</button>
+
+        <details class="actions-menu">
+          <summary
+            class="icon-action-btn"
+            title="Mais ações"
+            aria-label="Mais ações"
+          >⋯</summary>
+          <div class="actions-menu-popover">
+            <button
+              class="btn btn-danger"
+              type="button"
+              data-user-delete="${user.id}"
+            >Inativar</button>
+          </div>
+        </details>
       </div>
     `;
   }
 
-  function renderQuickTemplates() {
-    return `
-      <div class="card">
-        <div class="section-header">
-          <h3>Padrões rápidos</h3>
-          <span class="muted">Aplicar permissões por função</span>
-        </div>
+  async function handleSubmit(event) {
+    event.preventDefault();
 
-        <div class="inline-row" style="flex-wrap:wrap;">
-          <button class="btn btn-secondary" type="button" data-role-template="Gerente">Gerente</button>
-          <button class="btn btn-secondary" type="button" data-role-template="Vendedor">Vendedor</button>
-          <button class="btn btn-secondary" type="button" data-role-template="Estoque">Estoque</button>
-          <button class="btn btn-secondary" type="button" data-role-template="Entregador">Entregador</button>
-        </div>
-      </div>
-    `;
-  }
+    const form = event.currentTarget;
+    const payload = collectFormPayload(form);
 
-  function bindEvents() {
-    const form = tabEls.users.querySelector('#user-form');
-    const roleField = form.elements.role;
-    const accessLevelField = form.elements.accessLevel;
+    if (!payload.fullName || !payload.username || !payload.email) {
+      alert('Preencha nome, usuário e e-mail.');
+      return;
+    }
 
-    roleField.addEventListener('change', () => {
-      const nextAccess = accessLevelField.value || getDefaultAccessLevel(roleField.value);
-      markPermissionCheckboxes(form, ensurePermissionsByRole(roleField.value, nextAccess));
-      buildPermissionSummary(form);
-    });
+    if (!state.editingUserId && !payload.password) {
+      alert('A senha é obrigatória para criar usuário.');
+      return;
+    }
 
-    accessLevelField.addEventListener('change', () => {
-      markPermissionCheckboxes(form, ensurePermissionsByRole(roleField.value, accessLevelField.value));
-      buildPermissionSummary(form);
-    });
+    try {
+      if (state.editingUserId) {
+        const target = getEditingUser();
 
-    form.querySelectorAll('input[name="permissions"]').forEach((input) => {
-      input.addEventListener('change', () => buildPermissionSummary(form));
-    });
+        await updateManagedUser(state.currentUser, state.editingUserId, payload);
 
-    form.addEventListener('submit', async (event) => {
-      try {
-        await handleUserSubmit(event);
-      } catch (error) {
-        alert(error.message || 'Erro ao salvar usuário.');
+        await auditModule.log({
+          module: 'users',
+          action: 'update',
+          entityType: 'user',
+          entityId: state.editingUserId,
+          entityLabel: payload.fullName,
+          description: 'Usuário atualizado.',
+          metadata: {
+            previousName: target?.fullName || '',
+            newName: payload.fullName
+          }
+        });
+
+        showToast('Usuário atualizado.', 'success');
+      } else {
+        const created = await createManagedUser(state.currentUser, payload);
+
+        await auditModule.log({
+          module: 'users',
+          action: 'create',
+          entityType: 'user',
+          entityId: created?.id || '',
+          entityLabel: payload.fullName,
+          description: 'Usuário criado.'
+        });
+
+        showToast('Usuário criado.', 'success');
       }
-    });
 
-    tabEls.users.querySelector('#user-reset-btn').addEventListener('click', () => {
       state.editingUserId = null;
+      form.reset();
+      await refreshUsers();
+      render();
+    } catch (error) {
+      console.error(error);
+      alert(error.message || 'Erro ao salvar usuário.');
+    }
+  }
+
+  async function refreshUsers() {
+    try {
+      state.users = await listUsers();
+    } catch (error) {
+      console.error(error);
+    }
+  }
+
+  function bindFilters() {
+    tabEls.users.querySelector('#user-filter-apply')?.addEventListener('click', () => {
+      filters.term = tabEls.users.querySelector('#user-filter-term')?.value || '';
+      filters.role = tabEls.users.querySelector('#user-filter-role')?.value || '';
+      filters.status = tabEls.users.querySelector('#user-filter-status')?.value || '';
       render();
     });
 
-    tabEls.users.querySelectorAll('[data-role-template]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const role = btn.dataset.roleTemplate;
-        form.elements.role.value = role;
-
-        if (!state.editingUserId) {
-          form.elements.accessLevel.value = getDefaultAccessLevel(role);
-        }
-
-        markPermissionCheckboxes(
-          form,
-          ensurePermissionsByRole(form.elements.role.value, form.elements.accessLevel.value)
-        );
-
-        buildPermissionSummary(form);
-      });
-    });
-
-    tabEls.users.querySelectorAll('[data-user-edit]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        state.editingUserId = btn.dataset.userEdit;
-        render();
-      });
-    });
-
-    tabEls.users.querySelectorAll('[data-user-delete]').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        try {
-          const current = state.users.find((item) => item.id === btn.dataset.userDelete);
-
-          await deleteManagedUser(state.currentUser, btn.dataset.userDelete);
-
-          await auditModule.log({
-            module: 'users',
-            action: 'inactivate',
-            entityType: 'user',
-            entityId: btn.dataset.userDelete,
-            entityLabel: current?.fullName || '',
-            description: 'Usuário inativado logicamente.'
-          });
-
-          state.users = await listUsers();
-          render();
-        } catch (error) {
-          alert(error.message || 'Erro ao inativar usuário.');
-        }
-      });
-    });
-
-    tabEls.users.querySelector('#user-filter-apply').addEventListener('click', () => {
-      filters.term = tabEls.users.querySelector('#user-filter-term').value || '';
-      filters.role = tabEls.users.querySelector('#user-filter-role').value || '';
-      filters.status = tabEls.users.querySelector('#user-filter-status').value || '';
-      render();
-    });
-
-    tabEls.users.querySelector('#user-filter-clear').addEventListener('click', () => {
+    tabEls.users.querySelector('#user-filter-clear')?.addEventListener('click', () => {
       filters = {
         term: '',
         role: '',
@@ -295,149 +274,269 @@ export function createUsersModule(ctx) {
     });
   }
 
+  function bindActions() {
+    tabEls.users.querySelectorAll('[data-user-edit]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        state.editingUserId = btn.dataset.userEdit;
+        render();
+      });
+    });
+
+    tabEls.users.querySelectorAll('[data-user-delete]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const target = (state.users || []).find((item) => item.id === btn.dataset.userDelete);
+        if (!target) return;
+
+        const confirmed = window.confirm(`Inativar o usuário "${target.fullName}"?`);
+        if (!confirmed) return;
+
+        try {
+          await deleteManagedUser(state.currentUser, target.id);
+
+          await auditModule.log({
+            module: 'users',
+            action: 'inactivate',
+            entityType: 'user',
+            entityId: target.id,
+            entityLabel: target.fullName || '',
+            description: 'Usuário inativado.'
+          });
+
+          showToast('Usuário inativado.', 'success');
+          state.editingUserId = null;
+          await refreshUsers();
+          render();
+        } catch (error) {
+          console.error(error);
+          alert(error.message || 'Erro ao inativar usuário.');
+        }
+      });
+    });
+  }
+
+  function bindFormHelpers() {
+    const form = tabEls.users.querySelector('#user-form');
+    const roleSelect = form?.elements.role;
+    const accessSelect = form?.elements.accessLevel;
+    const permissionsHost = tabEls.users.querySelector('#permissions-host');
+
+    function rerenderPermissions() {
+      if (!permissionsHost || !roleSelect || !accessSelect) return;
+      permissionsHost.innerHTML = renderPermissionChecklist(roleSelect.value, accessSelect.value);
+    }
+
+    roleSelect?.addEventListener('change', rerenderPermissions);
+    accessSelect?.addEventListener('change', rerenderPermissions);
+
+    tabEls.users.querySelector('#user-reset-btn')?.addEventListener('click', () => {
+      state.editingUserId = null;
+      render();
+    });
+
+    form?.addEventListener('submit', handleSubmit);
+  }
+
+  function bindEvents() {
+    bindFilters();
+    bindActions();
+    bindFormHelpers();
+  }
+
   function render() {
+    if (!hasAccess()) {
+      tabEls.users.innerHTML = renderBlocked();
+      return;
+    }
+
     const editing = getEditingUser();
-    const rows = getFiltereredUsers();
+    const rows = getFilteredUsers();
+    const summary = getSummary();
 
     tabEls.users.innerHTML = `
-      <div class="users-layout">
-        <div class="panel">
-          <div class="section-header">
-            <h2>${editing ? 'Editar usuário' : 'Cadastrar usuário'}</h2>
-            <span class="muted">${editing ? 'Atualize os dados e permissões.' : 'Criação de contas com acompanhamento visual.'}</span>
+      <div class="section-stack">
+        <div class="cards-grid">
+          <div class="metric-card">
+            <span>Total de usuários</span>
+            <strong>${summary.total}</strong>
           </div>
-
-          <form id="user-form" class="form-grid">
-            <div class="card" style="grid-column:1 / -1;">
-              <div class="section-header">
-                <h3>1. Dados básicos</h3>
-                <span class="muted">Informações principais</span>
-              </div>
-
-              <div class="form-grid">
-                <label>Nome completo<input name="fullName" required /></label>
-                <label>Usuário<input name="username" required /></label>
-                <label>E-mail<input name="email" type="email" required /></label>
-                <label>Senha<input name="password" type="password" ${state.editingUserId ? '' : 'required'} /></label>
-              </div>
-            </div>
-
-            <div class="card" style="grid-column:1 / -1;">
-              <div class="section-header">
-                <h3>2. Perfil do acesso</h3>
-                <span class="muted">Cargo, nível e status</span>
-              </div>
-
-              <div class="form-grid">
-                <label>Função
-                  <select name="role">
-                    ${ROLES.map((role) => `<option value="${role}">${role}</option>`).join('')}
-                  </select>
-                </label>
-
-                <label>Nível de acesso
-                  <select name="accessLevel">
-                    ${buildAccessLevelOptions(state.currentUser, 'standard')}
-                  </select>
-                </label>
-
-                <label>Status
-                  <select name="active">
-                    <option value="true">Ativo</option>
-                    <option value="false">Inativo</option>
-                  </select>
-                </label>
-              </div>
-            </div>
-
-            ${renderQuickTemplates()}
-
-            <div class="card" style="grid-column:1 / -1;">
-              <div class="section-header">
-                <div>
-                  <h3>3. Permissões</h3>
-                  <span class="muted">Marque exatamente o que o usuário poderá acessar</span>
-                </div>
-                <div class="muted">Áreas liberadas: <strong id="user-permission-count">0</strong></div>
-              </div>
-
-              <div class="permission-grid">
-                ${AREAS.map((area) => `
-                  <label class="permission-item">
-                    <input type="checkbox" name="permissions" value="${area}">
-                    <span>${labelTab(area)}</span>
-                  </label>
-                `).join('')}
-              </div>
-
-              <div class="card" style="margin-top:14px; padding:14px;">
-                <strong style="display:block; margin-bottom:10px;">Resumo do acesso</strong>
-                <div id="user-permission-summary" class="inline-row" style="flex-wrap:wrap;"></div>
-              </div>
-            </div>
-
-            <div class="form-actions" style="grid-column:1 / -1;">
-              <button class="btn btn-primary" type="submit">${state.editingUserId ? 'Salvar usuário' : 'Cadastrar usuário'}</button>
-              <button type="button" id="user-reset-btn" class="btn btn-secondary">Limpar</button>
-            </div>
-          </form>
+          <div class="metric-card">
+            <span>Ativos</span>
+            <strong>${summary.active}</strong>
+          </div>
+          <div class="metric-card">
+            <span>Inativos</span>
+            <strong>${summary.inactive}</strong>
+          </div>
+          <div class="metric-card">
+            <span>Administradores</span>
+            <strong>${summary.admins}</strong>
+          </div>
         </div>
 
-        <div class="table-card">
-          <div class="section-header">
-            <h2>Usuários cadastrados</h2>
-            <span class="muted">${rows.length} registro(s)</span>
+        <div class="users-layout">
+          <div class="panel">
+            <div class="section-header">
+              <h2>${editing ? 'Editar usuário' : 'Cadastrar usuário'}</h2>
+              <span class="muted">${editing ? 'Atualize os dados e permissões.' : 'Criação controlada pelo administrador.'}</span>
+            </div>
+
+            <form id="user-form" class="form-grid mobile-optimized">
+              <div class="form-section" style="grid-column:1 / -1;">
+                <div class="form-section-title">
+                  <h3>1. Identificação</h3>
+                  <span>Dados básicos</span>
+                </div>
+                <div class="soft-divider"></div>
+
+                <div class="form-grid">
+                  <label>Nome completo
+                    <input name="fullName" required />
+                  </label>
+
+                  <label>Usuário
+                    <input name="username" required />
+                  </label>
+
+                  <label>E-mail
+                    <input name="email" type="email" required />
+                  </label>
+
+                  <label>Senha
+                    <input name="password" type="password" ${editing ? '' : 'required'} />
+                  </label>
+                </div>
+              </div>
+
+              <div class="form-section" style="grid-column:1 / -1;">
+                <div class="form-section-title">
+                  <h3>2. Perfil</h3>
+                  <span>Função e acesso</span>
+                </div>
+                <div class="soft-divider"></div>
+
+                <div class="form-grid">
+                  <label>Função
+                    <select name="role">
+                      ${ROLES.map((role) => `<option value="${role}">${role}</option>`).join('')}
+                    </select>
+                  </label>
+
+                  <label>Nível de acesso
+                    <select name="accessLevel">
+                      ${ACCESS_LEVELS.map((level) => `<option value="${level.value}">${level.label}</option>`).join('')}
+                    </select>
+                  </label>
+
+                  <label>Status
+                    <select name="active">
+                      <option value="true">Ativo</option>
+                      <option value="false">Inativo</option>
+                    </select>
+                  </label>
+                </div>
+              </div>
+
+              <div class="form-section" style="grid-column:1 / -1;">
+                <div class="form-section-title">
+                  <h3>3. Permissões</h3>
+                  <span>Selecione os módulos liberados</span>
+                </div>
+                <div class="soft-divider"></div>
+
+                <div id="permissions-host">
+                  ${renderPermissionChecklist(editing?.role || 'Vendedor', editing?.accessLevel || 'standard')}
+                </div>
+              </div>
+
+              <div class="form-actions" style="grid-column:1 / -1;">
+                <button class="btn btn-primary" type="submit">${editing ? 'Salvar alterações' : 'Criar usuário'}</button>
+                <button class="btn btn-secondary" type="button" id="user-reset-btn">Limpar</button>
+              </div>
+            </form>
           </div>
 
-          <div class="search-row" style="margin-bottom:14px;">
-            <input id="user-filter-term" placeholder="Buscar por nome, usuário, e-mail, função ou nível" value="${escapeHtml(filters.term)}" />
-            <select id="user-filter-role">
-              <option value="">Todas as funções</option>
-              ${ROLES.map((role) => `<option value="${role}" ${filters.role === role ? 'selected' : ''}>${role}</option>`).join('')}
-            </select>
-            <select id="user-filter-status">
-              <option value="">Todos os status</option>
-              <option value="ativo" ${filters.status === 'ativo' ? 'selected' : ''}>Ativo</option>
-              <option value="inativo" ${filters.status === 'inativo' ? 'selected' : ''}>Inativo</option>
-            </select>
-            <button class="btn btn-secondary" id="user-filter-apply">Filtrar</button>
-            <button class="btn btn-secondary" id="user-filter-clear">Limpar</button>
-          </div>
+          <div class="section-stack">
+            <div class="table-card">
+              <div class="section-header">
+                <h2>Usuários</h2>
+                <span class="muted">${rows.length} resultado(s)</span>
+              </div>
 
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Nome</th>
-                  <th>Usuário</th>
-                  <th>Função</th>
-                  <th>Nível</th>
-                  <th>Status</th>
-                  <th>Permissões</th>
-                  <th>Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${rows.map((user) => `
-                  <tr>
-                    <td>${escapeHtml(user.fullName)}</td>
-                    <td>${escapeHtml(user.username)}</td>
-                    <td>${escapeHtml(user.role)}</td>
-                    <td>${escapeHtml(user.accessLevel || 'standard')}</td>
-                    <td><span class="tag ${user.active ? 'success' : 'warning'}">${user.active ? 'Ativo' : 'Inativo'}</span></td>
-                    <td>${(user.permissions || []).map(labelTab).join(', ')}</td>
-                    <td>${renderUserActions(user)}</td>
-                  </tr>
-                `).join('') || '<tr><td colspan="7">Nenhum usuário cadastrado.</td></tr>'}
-              </tbody>
-            </table>
+              <div class="search-row" style="margin-bottom:14px;">
+                <input id="user-filter-term" placeholder="Buscar por nome, usuário, e-mail, função ou acesso" value="${escapeHtml(filters.term)}" />
+                <select id="user-filter-role">
+                  <option value="">Todas as funções</option>
+                  ${ROLES.map((role) => `<option value="${role}" ${filters.role === role ? 'selected' : ''}>${role}</option>`).join('')}
+                </select>
+                <select id="user-filter-status">
+                  <option value="">Todos os status</option>
+                  <option value="ativo" ${filters.status === 'ativo' ? 'selected' : ''}>Ativo</option>
+                  <option value="inativo" ${filters.status === 'inativo' ? 'selected' : ''}>Inativo</option>
+                </select>
+                <button class="btn btn-secondary" type="button" id="user-filter-apply">Filtrar</button>
+                <button class="btn btn-secondary" type="button" id="user-filter-clear">Limpar</button>
+              </div>
+
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Nome</th>
+                      <th>Usuário</th>
+                      <th>E-mail</th>
+                      <th>Função</th>
+                      <th>Acesso</th>
+                      <th>Status</th>
+                      <th>Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${rows.map((user) => `
+                      <tr>
+                        <td>${escapeHtml(user.fullName || '-')}</td>
+                        <td>${escapeHtml(user.username || '-')}</td>
+                        <td>${escapeHtml(user.email || '-')}</td>
+                        <td>${escapeHtml(user.role || '-')}</td>
+                        <td>${escapeHtml(user.accessLevel || '-')}</td>
+                        <td>${getStatusTag(user)}</td>
+                        <td>${renderUserActions(user)}</td>
+                      </tr>
+                    `).join('') || '<tr><td colspan="7">Nenhum usuário encontrado.</td></tr>'}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="panel summary-highlight">
+              <div class="section-header">
+                <h2>Resumo rápido</h2>
+                <span class="badge-soft">Controle</span>
+              </div>
+
+              <div class="cards-grid" style="grid-template-columns:1fr; gap:12px;">
+                <div class="compact-card">
+                  <span class="muted">Usuários ativos</span>
+                  <strong>${summary.active}</strong>
+                </div>
+
+                <div class="compact-card">
+                  <span class="muted">Usuários inativos</span>
+                  <strong>${summary.inactive}</strong>
+                </div>
+
+                <div class="compact-card">
+                  <span class="muted">Com acesso administrativo</span>
+                  <strong>${summary.admins}</strong>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
     `;
 
     const form = tabEls.users.querySelector('#user-form');
-    fillEditingForm(form);
+    fillForm(form, editing);
     bindEvents();
   }
 

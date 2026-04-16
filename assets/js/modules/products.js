@@ -1,4 +1,4 @@
-import { escapeHtml } from './ui.js';
+import { escapeHtml, showToast } from './ui.js';
 
 export function createProductsModule(ctx) {
   const {
@@ -25,6 +25,16 @@ export function createProductsModule(ctx) {
     text: '',
     status: ''
   };
+
+  let scannerStreamRef = null;
+  let scannerTimer = null;
+  let scannerReader = null;
+  let scannerRunning = false;
+
+  function isMobileDevice() {
+    return /Android|iPhone|iPad|iPod|Mobile|Windows Phone|Opera Mini/i.test(navigator.userAgent)
+      || window.matchMedia('(max-width: 768px)').matches;
+  }
 
   function getFilteredProducts() {
     return (state.products || []).filter((product) => {
@@ -187,6 +197,210 @@ export function createProductsModule(ctx) {
     });
   }
 
+  function getBarcodeInput() {
+    return tabEls.products.querySelector('input[name="barcode"]');
+  }
+
+  function focusBarcodeInput() {
+    const input = getBarcodeInput();
+    if (input) {
+      input.focus();
+      input.select?.();
+    }
+  }
+
+  function getScannerElements() {
+    return {
+      card: document.getElementById('product-barcode-scanner-card'),
+      video: document.getElementById('product-barcode-video'),
+      status: document.getElementById('product-barcode-status')
+    };
+  }
+
+  function setScannerStatus(message, type = 'info') {
+    const { status } = getScannerElements();
+    if (!status) return;
+    status.textContent = message;
+    status.dataset.type = type;
+  }
+
+  function showScannerCard() {
+    const { card } = getScannerElements();
+    if (card) {
+      card.style.display = 'block';
+    }
+  }
+
+  function hideScannerCard() {
+    const { card } = getScannerElements();
+    if (card) {
+      card.style.display = 'none';
+    }
+  }
+
+  function setBarcodeValue(value) {
+    const input = getBarcodeInput();
+    if (!input) return;
+    input.value = String(value || '').trim();
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.focus();
+    input.select?.();
+  }
+
+  async function handleBarcodeCaptureClick() {
+    if (!isMobileDevice()) {
+      focusBarcodeInput();
+      showToast('No computador, clique no campo e use a leitora USB.', 'info');
+      return;
+    }
+
+    await startBarcodeScanner();
+  }
+
+  async function startBarcodeScanner() {
+    if (scannerRunning) return;
+
+    showScannerCard();
+    setScannerStatus('Abrindo câmera traseira...', 'info');
+    stopBarcodeScanner(false);
+
+    try {
+      if ('BarcodeDetector' in window) {
+        await startNativeBarcodeScanner();
+        return;
+      }
+
+      await startZxingBarcodeScanner();
+    } catch (error) {
+      console.error('Erro ao iniciar leitura no cadastro:', error);
+
+      try {
+        await startZxingBarcodeScanner();
+      } catch (fallbackError) {
+        console.error('Erro ZXing no cadastro:', fallbackError);
+        stopBarcodeScanner(true);
+        showToast('Não foi possível abrir a câmera para ler o código.', 'error');
+      }
+    }
+  }
+
+  async function startNativeBarcodeScanner() {
+    const { video } = getScannerElements();
+
+    if (!navigator.mediaDevices?.getUserMedia || !video) {
+      throw new Error('Câmera indisponível.');
+    }
+
+    scannerStreamRef = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: 'environment' }
+      },
+      audio: false
+    });
+
+    video.srcObject = scannerStreamRef;
+    await video.play();
+
+    const detector = new BarcodeDetector({
+      formats: ['ean_13', 'ean_8', 'code_128', 'upc_a', 'upc_e', 'code_39', 'itf']
+    });
+
+    scannerRunning = true;
+    setScannerStatus('Aponte a câmera para o código de barras do produto.', 'info');
+
+    scannerTimer = window.setInterval(async () => {
+      try {
+        const codes = await detector.detect(video);
+        if (!codes.length) return;
+
+        const value = String(codes[0].rawValue || '').trim();
+        if (!value) return;
+
+        setBarcodeValue(value);
+        setScannerStatus(`Código capturado: ${value}`, 'success');
+        stopBarcodeScanner(true);
+        showToast('Código de barras capturado.', 'success');
+      } catch (error) {
+        console.error('Erro ao detectar código no cadastro:', error);
+      }
+    }, 600);
+  }
+
+  async function startZxingBarcodeScanner() {
+    const { video } = getScannerElements();
+
+    if (!window.ZXing || !video) {
+      throw new Error('ZXing não disponível.');
+    }
+
+    const ZXingLib = window.ZXing;
+    scannerReader = new ZXingLib.BrowserMultiFormatReader();
+
+    scannerRunning = true;
+    setScannerStatus('Aponte a câmera para o código de barras do produto.', 'info');
+
+    await scannerReader.decodeFromConstraints(
+      {
+        video: {
+          facingMode: { ideal: 'environment' }
+        }
+      },
+      video,
+      (result, error) => {
+        if (result) {
+          const value = String(result.text || '').trim();
+          if (!value) return;
+
+          setBarcodeValue(value);
+          setScannerStatus(`Código capturado: ${value}`, 'success');
+          stopBarcodeScanner(true);
+          showToast('Código de barras capturado.', 'success');
+        }
+
+        if (error && error.name !== 'NotFoundException') {
+          console.error('ZXing cadastro erro:', error);
+        }
+      }
+    );
+  }
+
+  function stopBarcodeScanner(hideCard = true) {
+    if (scannerTimer) {
+      window.clearInterval(scannerTimer);
+      scannerTimer = null;
+    }
+
+    if (scannerReader) {
+      try {
+        scannerReader.reset();
+      } catch (error) {
+        console.error(error);
+      }
+      scannerReader = null;
+    }
+
+    if (scannerStreamRef) {
+      scannerStreamRef.getTracks().forEach((track) => track.stop());
+      scannerStreamRef = null;
+    }
+
+    const { video } = getScannerElements();
+    if (video) {
+      try {
+        video.pause();
+      } catch (error) {
+        console.error(error);
+      }
+      video.srcObject = null;
+    }
+
+    scannerRunning = false;
+
+    if (hideCard) {
+      hideScannerCard();
+    }
+  }
+
   function bindEvents() {
     const form = tabEls.products.querySelector('#product-form');
 
@@ -194,6 +408,7 @@ export function createProductsModule(ctx) {
 
     tabEls.products.querySelector('#product-reset-btn').addEventListener('click', () => {
       state.editingProductId = null;
+      stopBarcodeScanner(true);
       render();
     });
 
@@ -224,6 +439,11 @@ export function createProductsModule(ctx) {
       render();
     });
 
+    tabEls.products.querySelector('#product-barcode-capture-btn')?.addEventListener('click', handleBarcodeCaptureClick);
+    tabEls.products.querySelector('#product-barcode-stop-btn')?.addEventListener('click', () => {
+      stopBarcodeScanner(true);
+    });
+
     bindProductTableActions(tabEls.products);
   }
 
@@ -243,6 +463,27 @@ export function createProductsModule(ctx) {
         <button class="btn btn-secondary" type="button" data-product-move="${product.id}">Movimentar</button>
         <button class="btn btn-danger" type="button" data-product-delete="${product.id}">Inativar</button>
       </div>
+    `;
+  }
+
+  function renderBarcodeButton() {
+    return `
+      <button
+        class="icon-btn"
+        type="button"
+        id="product-barcode-capture-btn"
+        title="Capturar código de barras"
+        aria-label="Capturar código de barras"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M4 7v10"></path>
+          <path d="M7 7v10"></path>
+          <path d="M10 7v10"></path>
+          <path d="M14 7v10"></path>
+          <path d="M17 7v10"></path>
+          <path d="M20 7v10"></path>
+        </svg>
+      </button>
     `;
   }
 
@@ -290,13 +531,35 @@ export function createProductsModule(ctx) {
                 <div class="form-grid">
                   <label>Nome do produto<input name="name" required /></label>
                   <label>Número de série<input name="serialNumber" /></label>
-                  <label>Código de barras<input name="barcode" /></label>
+
+                  <label>
+                    Código de barras
+                    <div class="input-with-action">
+                      <input name="barcode" />
+                      ${renderBarcodeButton()}
+                    </div>
+                    <span class="mini-help">No celular, toque no ícone para usar a câmera. No computador, use a leitora USB no campo.</span>
+                  </label>
+
                   <label>Status
                     <select name="status">
                       <option value="ativo">Ativo</option>
                       <option value="inativo">Inativo</option>
                     </select>
                   </label>
+                </div>
+
+                <div
+                  class="scanner-card"
+                  id="product-barcode-scanner-card"
+                  style="display:none; grid-column:1 / -1;"
+                >
+                  <h3>Capturar código de barras</h3>
+                  <video id="product-barcode-video" class="video-preview" autoplay muted playsinline></video>
+                  <div id="product-barcode-status" class="auth-hint" style="margin-top:10px;">Aguardando câmera...</div>
+                  <div class="form-actions" style="margin-top:10px;">
+                    <button class="btn btn-secondary" type="button" id="product-barcode-stop-btn">Parar leitura</button>
+                  </div>
                 </div>
               </div>
 
@@ -429,6 +692,7 @@ export function createProductsModule(ctx) {
   }
 
   return {
-    render
+    render,
+    stopBarcodeScanner
   };
 }

@@ -158,6 +158,35 @@ export function createUsersModule(ctx) {
       : '<span class="tag success">Ativo</span>';
   }
 
+  function openUserActions(userId) {
+    window.openActionsSheet?.('Ações do usuário', [
+      {
+        label: 'Inativar',
+        className: 'btn btn-danger',
+        onClick: async () => {
+          const target = (state.users || []).find((item) => item.id === userId);
+          if (!target) return;
+
+          await deleteManagedUser(state.currentUser, target.id);
+
+          await auditModule.log({
+            module: 'users',
+            action: 'inactivate',
+            entityType: 'user',
+            entityId: target.id,
+            entityLabel: target.fullName || '',
+            description: 'Usuário inativado.'
+          });
+
+          showToast('Usuário inativado.', 'success');
+          state.editingUserId = null;
+          await refreshUsers();
+          render();
+        }
+      }
+    ]);
+  }
+
   function renderUserActions(user) {
     return `
       <div class="actions-inline-compact">
@@ -169,20 +198,13 @@ export function createUsersModule(ctx) {
           aria-label="Editar"
         >✏️</button>
 
-        <details class="actions-menu">
-          <summary
-            class="icon-action-btn"
-            title="Mais ações"
-            aria-label="Mais ações"
-          >⋯</summary>
-          <div class="actions-menu-popover">
-            <button
-              class="btn btn-danger"
-              type="button"
-              data-user-delete="${user.id}"
-            >Inativar</button>
-          </div>
-        </details>
+        <button
+          class="icon-action-btn"
+          type="button"
+          data-user-more="${user.id}"
+          title="Mais ações"
+          aria-label="Mais ações"
+        >⋯</button>
       </div>
     `;
   }
@@ -282,34 +304,9 @@ export function createUsersModule(ctx) {
       });
     });
 
-    tabEls.users.querySelectorAll('[data-user-delete]').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        const target = (state.users || []).find((item) => item.id === btn.dataset.userDelete);
-        if (!target) return;
-
-        const confirmed = window.confirm(`Inativar o usuário "${target.fullName}"?`);
-        if (!confirmed) return;
-
-        try {
-          await deleteManagedUser(state.currentUser, target.id);
-
-          await auditModule.log({
-            module: 'users',
-            action: 'inactivate',
-            entityType: 'user',
-            entityId: target.id,
-            entityLabel: target.fullName || '',
-            description: 'Usuário inativado.'
-          });
-
-          showToast('Usuário inativado.', 'success');
-          state.editingUserId = null;
-          await refreshUsers();
-          render();
-        } catch (error) {
-          console.error(error);
-          alert(error.message || 'Erro ao inativar usuário.');
-        }
+    tabEls.users.querySelectorAll('[data-user-more]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        openUserActions(btn.dataset.userMore);
       });
     });
   }

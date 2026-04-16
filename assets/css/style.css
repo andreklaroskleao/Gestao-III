@@ -1444,3 +1444,185 @@ tbody tr:hover {
     min-height: 96px;
   }
 }
+
+body.theme-light {
+  --bg: #f4f7fb;
+  --bg-soft: #e9eef6;
+  --panel: #ffffff;
+  --panel-2: #f7f9fd;
+  --line: rgba(15, 23, 42, 0.08);
+  --line-strong: rgba(15, 23, 42, 0.14);
+  --text: #182434;
+  --text-soft: #5c6b80;
+  --primary: #12c7f0;
+  --primary-strong: #0aa9d2;
+  --shadow: 0 14px 30px rgba(15, 23, 42, 0.08);
+}
+
+body.theme-light .topbar {
+  background: rgba(255, 255, 255, 0.88);
+}
+
+body.theme-light .sidebar {
+  background: rgba(245, 248, 252, 0.94);
+}
+
+body.theme-light .auth-card,
+body.theme-light .panel,
+body.theme-light .card,
+body.theme-light .table-card,
+body.theme-light .metric-card,
+body.theme-light .compact-card,
+body.theme-light .summary-box,
+body.theme-light .scanner-card,
+body.theme-light .modal-card {
+  background: linear-gradient(180deg, #ffffff, #f7f9fd);
+}
+
+body.theme-light input,
+body.theme-light select,
+body.theme-light textarea {
+  background: #ffffff;
+  color: var(--text);
+}
+
+body.theme-light thead th {
+  background: #eef3f9;
+}
+
+body.theme-light .nav-item {
+  background: rgba(15, 23, 42, 0.04);
+  color: var(--text);
+}
+
+body.theme-light .nav-item:hover {
+  background: rgba(15, 23, 42, 0.08);
+}
+
+body.theme-light .nav-item.active {
+  color: #031420;
+}
+
+@media (max-width: 920px) {
+  .users-layout,
+  .products-layout,
+  .deliveries-layout,
+  .sales-layout,
+  .settings-layout,
+  .dashboard-grid,
+  .grid-2,
+  .cards-grid,
+  .stats-grid,
+  .form-grid,
+  .settings-grid,
+  .form-subgrid,
+  .permission-grid,
+  .kpi-inline {
+    grid-template-columns: 1fr !important;
+  }
+
+  .search-row,
+  .inline-row,
+  .clean-table-actions,
+  .cart-actions,
+  .form-actions {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    width: 100% !important;
+    gap: 10px;
+  }
+
+  .search-row > *,
+  .inline-row > *,
+  .clean-table-actions > *,
+  .cart-actions > *,
+  .form-actions > * {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .panel,
+  .card,
+  .table-card,
+  .metric-card,
+  .compact-card,
+  .summary-box,
+  .scanner-card {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .table-wrap {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .table-wrap table {
+    min-width: 560px;
+  }
+
+  .list-item,
+  .delivery-item,
+  .cart-item,
+  .alert-item,
+  .summary-box,
+  .compact-card,
+  .metric-card {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+}
+
+@media (max-width: 640px) {
+  .main {
+    padding: 8px;
+  }
+
+  .topbar {
+    padding: 10px 12px;
+  }
+
+  .panel,
+  .card,
+  .table-card,
+  .metric-card,
+  .compact-card,
+  .auth-card {
+    padding: 12px;
+    border-radius: 14px;
+  }
+
+  .table-wrap table {
+    min-width: 520px;
+  }
+
+  th,
+  td {
+    padding: 10px;
+  }
+
+  input,
+  select {
+    height: 42px;
+    padding: 0 12px;
+  }
+
+  textarea {
+    min-height: 90px;
+    padding: 10px 12px;
+  }
+
+  .btn {
+    min-height: 42px;
+    padding: 0 12px;
+  }
+}

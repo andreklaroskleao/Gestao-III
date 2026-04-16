@@ -152,6 +152,13 @@ export function createPrintModule(ctx) {
 
         <div class="divider"></div>
 
+        <div class="row">
+          <span>Cliente</span>
+          <strong>${escapeHtml(sale.customerName || 'Balcão')}</strong>
+        </div>
+
+        <div class="divider"></div>
+
         <div class="items">
           ${itemsHtml || '<div class="item">Sem itens</div>'}
         </div>

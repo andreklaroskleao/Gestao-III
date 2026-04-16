@@ -109,10 +109,12 @@ textarea {
   background: rgba(12, 21, 36, 0.92);
   border-right: 1px solid var(--line);
   padding: 18px 14px;
-  overflow: hidden;
-  transition: width 0.22s ease, padding 0.22s ease;
   width: var(--sidebar-w);
   backdrop-filter: blur(10px);
+  transition: width 0.22s ease, padding 0.22s ease;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 body.sidebar-collapsed .app-shell {
@@ -125,6 +127,7 @@ body.sidebar-collapsed .sidebar {
 }
 
 .sidebar-top {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -166,23 +169,60 @@ body.sidebar-collapsed .sidebar {
   background: rgba(255, 255, 255, 0.08);
 }
 
+.sidebar-user {
+  flex: 0 0 auto;
+  margin: 0 0 16px;
+  padding: 14px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--line);
+}
+
+.sidebar-user strong {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.sidebar-user span {
+  color: var(--text-soft);
+  font-size: 0.88rem;
+}
+
 .nav-list {
+  flex: 1 1 auto;
+  min-height: 0;
   display: grid;
   gap: 8px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
+}
+
+.nav-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.nav-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+}
+
+.nav-list::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .nav-item {
   width: 100%;
-  min-height: 48px;
+  min-height: 44px;
   border-radius: 14px;
   border: 1px solid transparent;
   background: rgba(255, 255, 255, 0.04);
   color: var(--text);
-  padding: 0 14px;
+  padding: 0 12px;
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   transition: 0.18s ease;
   text-align: left;
 }
@@ -219,25 +259,8 @@ body.sidebar-collapsed .nav-item {
   padding-inline: 0;
 }
 
-.sidebar-user {
-  margin: 18px 0 16px;
-  padding: 14px;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--line);
-}
-
-.sidebar-user strong {
-  display: block;
-  margin-bottom: 4px;
-}
-
-.sidebar-user span {
-  color: var(--text-soft);
-  font-size: 0.88rem;
-}
-
 .sidebar-footer {
+  flex: 0 0 auto;
   margin-top: 16px;
   display: grid;
   gap: 10px;
@@ -809,8 +832,13 @@ tbody tr:hover {
     top: 0;
     z-index: 1200;
     width: min(84vw, 310px);
+    height: 100vh;
     transform: translateX(-100%);
     transition: transform 0.22s ease;
+    padding: 18px 14px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
   }
 
   body.sidebar-open .sidebar {

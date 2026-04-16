@@ -33,6 +33,7 @@ export function createSettingsModule(ctx) {
     event.preventDefault();
 
     const payload = Object.fromEntries(new FormData(event.currentTarget).entries());
+
     payload.lowStockThreshold = Number(payload.lowStockThreshold || 5);
     payload.thermalCompactMode = payload.thermalCompactMode === 'true';
     payload.thermalAutoPrint = payload.thermalAutoPrint === 'true';
@@ -72,6 +73,8 @@ export function createSettingsModule(ctx) {
         description: 'Configurações gerais criadas.'
       });
     }
+
+    alert('Configurações salvas com sucesso.');
   }
 
   async function handlePasswordSubmit(event) {
@@ -181,15 +184,16 @@ export function createSettingsModule(ctx) {
   function bindPrintEvents() {
     tabEls.settings.querySelector('#thermal-test-print-btn')?.addEventListener('click', () => {
       printModule.printSaleReceipt({
+        customerName: 'Cliente teste',
+        paymentMethod: 'Dinheiro',
         subtotal: 50,
         discount: 5,
         total: 45,
         amountPaid: 50,
         change: 5,
-        paymentMethod: 'Dinheiro',
         items: [
-          { name: 'Produto teste 1', quantity: 1, unitPrice: 20, total: 20 },
-          { name: 'Produto teste 2', quantity: 1, unitPrice: 30, total: 30 }
+          { productId: '1', name: 'Produto teste 1', quantity: 1, unitPrice: 20, total: 20 },
+          { productId: '2', name: 'Produto teste 2', quantity: 1, unitPrice: 30, total: 30 }
         ]
       });
     });
@@ -198,10 +202,12 @@ export function createSettingsModule(ctx) {
   function bindEvents() {
     tabEls.settings.querySelector('#settings-form').addEventListener('submit', handleSettingsSubmit);
     tabEls.settings.querySelector('#password-form').addEventListener('submit', handlePasswordSubmit);
+
     bindAuditFilters();
     bindBackupEvents();
     bindExcelEvents();
     bindPrintEvents();
+
     cashierModule.bindCashEvents(render);
   }
 
@@ -213,10 +219,14 @@ export function createSettingsModule(ctx) {
     const totalReceived = accounts.reduce((sum, item) => sum + Number(item.receivedAmount || 0), 0);
 
     const overdueCount = accounts.filter((item) => {
-      if (!item.dueDate || Number(item.openAmount || 0) <= 0) return false;
+      if (!item.dueDate || Number(item.openAmount || 0) <= 0) {
+        return false;
+      }
+
       const due = new Date(`${item.dueDate}T00:00:00`);
       const today = new Date();
       today.setHours(0, 0, 0, 0);
+
       return due < today;
     }).length;
 
@@ -227,7 +237,7 @@ export function createSettingsModule(ctx) {
     })[0];
 
     return `
-      <div class="cards-grid" style="margin-top:18px;">
+      <div class="cards-grid" style="margin:16px 0;">
         <div class="metric-card">
           <span>Contas em aberto</span>
           <strong>${totalOpen.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</strong>
@@ -255,149 +265,170 @@ export function createSettingsModule(ctx) {
     const thermalAutoPrint = Boolean(state.settings?.thermalAutoPrint);
 
     tabEls.settings.innerHTML = `
-      <div class="settings-layout">
-        <div class="panel">
-          <div class="section-header">
-            <h2>Geral</h2>
-            <span class="muted">Ajustes principais do sistema</span>
-          </div>
-
-          <form id="settings-form" class="settings-grid">
-            <label>Nome da loja<input name="storeName" value="${escapeHtml(state.settings.storeName || '')}" /></label>
-            <label>Endereço<input name="address" value="${escapeHtml(state.settings.address || '')}" /></label>
-            <label>Limite de estoque baixo<input name="lowStockThreshold" type="number" min="1" value="${state.settings.lowStockThreshold || 5}" /></label>
-            <label>Tema do sistema
-              <select name="theme">
-                <option value="system" ${selectedTheme === 'system' ? 'selected' : ''}>Automático</option>
-                <option value="light" ${selectedTheme === 'light' ? 'selected' : ''}>Claro</option>
-                <option value="dark" ${selectedTheme === 'dark' ? 'selected' : ''}>Escuro</option>
-              </select>
-            </label>
-            <label>Largura térmica
-              <select name="thermalWidth">
-                <option value="58mm" ${thermalWidth === '58mm' ? 'selected' : ''}>58mm</option>
-                <option value="80mm" ${thermalWidth === '80mm' ? 'selected' : ''}>80mm</option>
-              </select>
-            </label>
-            <label>Modo compacto
-              <select name="thermalCompactMode">
-                <option value="true" ${thermalCompactMode ? 'selected' : ''}>Ativado</option>
-                <option value="false" ${!thermalCompactMode ? 'selected' : ''}>Desativado</option>
-              </select>
-            </label>
-            <label>Imprimir automaticamente
-              <select name="thermalAutoPrint">
-                <option value="true" ${thermalAutoPrint ? 'selected' : ''}>Ativado</option>
-                <option value="false" ${!thermalAutoPrint ? 'selected' : ''}>Desativado</option>
-              </select>
-            </label>
-            <label>Texto de garantia<textarea name="warrantyText">${escapeHtml(state.settings.warrantyText || '')}</textarea></label>
-
-            <div class="form-actions" style="grid-column:1 / -1;">
-              <button class="btn btn-primary" type="submit">Salvar configurações</button>
-              <button class="btn btn-secondary" type="button" id="thermal-test-print-btn">Teste térmico</button>
+      <div class="section-stack">
+        <div class="users-layout">
+          <div class="panel">
+            <div class="section-header">
+              <h2>Geral</h2>
+              <span class="muted">Ajustes principais do sistema</span>
             </div>
-          </form>
-        </div>
 
-        <div class="panel">
-          <div class="section-header">
-            <h2>Segurança</h2>
-            <span class="muted">Troca de senha da sessão atual</span>
+            <form id="settings-form" class="form-grid">
+              <label>Nome da loja
+                <input name="storeName" value="${escapeHtml(state.settings.storeName || '')}" />
+              </label>
+
+              <label>Endereço
+                <input name="address" value="${escapeHtml(state.settings.address || '')}" />
+              </label>
+
+              <label>Limite de estoque baixo
+                <input name="lowStockThreshold" type="number" min="1" value="${Number(state.settings.lowStockThreshold || 5)}" />
+              </label>
+
+              <label>Tema do sistema
+                <select name="theme">
+                  <option value="system" ${selectedTheme === 'system' ? 'selected' : ''}>Automático</option>
+                  <option value="light" ${selectedTheme === 'light' ? 'selected' : ''}>Claro</option>
+                  <option value="dark" ${selectedTheme === 'dark' ? 'selected' : ''}>Escuro</option>
+                </select>
+              </label>
+
+              <label>Largura térmica
+                <select name="thermalWidth">
+                  <option value="58mm" ${thermalWidth === '58mm' ? 'selected' : ''}>58mm</option>
+                  <option value="80mm" ${thermalWidth === '80mm' ? 'selected' : ''}>80mm</option>
+                </select>
+              </label>
+
+              <label>Modo compacto
+                <select name="thermalCompactMode">
+                  <option value="true" ${thermalCompactMode ? 'selected' : ''}>Ativado</option>
+                  <option value="false" ${!thermalCompactMode ? 'selected' : ''}>Desativado</option>
+                </select>
+              </label>
+
+              <label>Imprimir automaticamente
+                <select name="thermalAutoPrint">
+                  <option value="true" ${thermalAutoPrint ? 'selected' : ''}>Ativado</option>
+                  <option value="false" ${!thermalAutoPrint ? 'selected' : ''}>Desativado</option>
+                </select>
+              </label>
+
+              <label style="grid-column:1 / -1;">Texto de garantia
+                <textarea name="warrantyText">${escapeHtml(state.settings.warrantyText || '')}</textarea>
+              </label>
+
+              <div class="form-actions" style="grid-column:1 / -1;">
+                <button class="btn btn-primary" type="submit">Salvar configurações</button>
+                <button class="btn btn-secondary" type="button" id="thermal-test-print-btn">Teste térmico</button>
+              </div>
+            </form>
           </div>
 
-          <form id="password-form" class="settings-grid">
-            <label>Senha atual<input name="currentPassword" type="password" required /></label>
-            <label>Nova senha<input name="newPassword" type="password" required /></label>
-            <div class="form-actions" style="grid-column:1 / -1;">
-              <button class="btn btn-secondary" type="submit">Trocar senha</button>
+          <div class="section-stack">
+            <div class="panel">
+              <div class="section-header">
+                <h2>Segurança</h2>
+                <span class="muted">Troca de senha da sessão atual</span>
+              </div>
+
+              <form id="password-form" class="form-grid">
+                <label>Senha atual
+                  <input type="password" name="currentPassword" required />
+                </label>
+
+                <label>Nova senha
+                  <input type="password" name="newPassword" required />
+                </label>
+
+                <div class="form-actions" style="grid-column:1 / -1;">
+                  <button class="btn btn-primary" type="submit">Trocar senha</button>
+                </div>
+              </form>
+
+              <div class="auth-hint" style="margin-top:12px;">
+                Usuários inativos não conseguem entrar. As permissões são conferidas tanto na interface quanto nas regras do Firestore.
+              </div>
             </div>
-          </form>
 
-          <div class="card" style="margin-top:14px; padding:14px;">
-            <strong style="display:block; margin-bottom:6px;">Observação</strong>
-            <span class="muted">Usuários inativos não conseguem entrar. As permissões são conferidas tanto na interface quanto nas regras do Firestore.</span>
+            <div class="panel">
+              <div class="section-header">
+                <h2>Backup e importação</h2>
+                <span class="muted">JSON e Excel</span>
+              </div>
+
+              <div class="section-stack">
+                <div class="card">
+                  <h3>Backup JSON</h3>
+                  <p class="muted">Exportar a base em JSON.</p>
+                  <div class="form-actions">
+                    <button class="btn btn-secondary" type="button" id="backup-export-btn">Exportar backup</button>
+                  </div>
+                </div>
+
+                <div class="card">
+                  <h3>Importação JSON</h3>
+                  <p class="muted">Restaurar dados por arquivo JSON.</p>
+                  <input id="backup-import-file" type="file" accept=".json" />
+                  <div class="form-actions" style="margin-top:10px;">
+                    <button class="btn btn-secondary" type="button" id="backup-import-btn">Importar backup</button>
+                  </div>
+                </div>
+
+                <div class="card">
+                  <h3>Exportação Excel</h3>
+                  <p class="muted">Exportar planilhas em um único arquivo.</p>
+                  <div class="form-actions">
+                    <button class="btn btn-secondary" type="button" id="excel-export-btn">Exportar Excel</button>
+                  </div>
+                </div>
+
+                <div class="card">
+                  <h3>Importação Excel</h3>
+                  <p class="muted">Importar produtos, clientes e contas.</p>
+                  <input id="excel-import-file" type="file" accept=".xlsx,.xls" />
+                  <div class="form-actions" style="margin-top:10px;">
+                    <button class="btn btn-secondary" type="button" id="excel-import-btn">Importar Excel</button>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
 
-      ${renderFinancialSummary()}
+        ${renderFinancialSummary()}
 
-      <div class="cards-grid" style="margin-top:18px;">
-        <div class="card">
+        <div class="section-stack">
+          ${cashierModule.renderCashSessionPanel()}
+          ${cashierModule.renderHistoryTable()}
+        </div>
+
+        <div class="table-card">
           <div class="section-header">
-            <h3>Backup JSON</h3>
+            <h2>Auditoria</h2>
+            <span class="muted">Filtro refinado dos eventos do sistema</span>
           </div>
-          <p class="muted">Exportar a base em JSON.</p>
-          <div class="form-actions">
-            <button class="btn btn-secondary" type="button" id="backup-export-btn">Exportar backup</button>
+
+          <div class="search-row" style="margin-bottom:14px;">
+            <input id="audit-filter-module" placeholder="Módulo" value="${escapeHtml(auditFilters.module)}" />
+            <input id="audit-filter-action" placeholder="Ação" value="${escapeHtml(auditFilters.action)}" />
+            <input id="audit-filter-entity-type" placeholder="Tipo de entidade" value="${escapeHtml(auditFilters.entityType)}" />
+            <input id="audit-filter-entity-label" placeholder="Registro" value="${escapeHtml(auditFilters.entityLabel)}" />
+            <input id="audit-filter-user" placeholder="Usuário" value="${escapeHtml(auditFilters.user)}" />
+            <input id="audit-filter-date-from" type="date" value="${auditFilters.dateFrom}" />
+            <input id="audit-filter-date-to" type="date" value="${auditFilters.dateTo}" />
+            <button class="btn btn-secondary" type="button" id="audit-filter-apply">Filtrar</button>
+            <button class="btn btn-secondary" type="button" id="audit-filter-clear">Limpar</button>
           </div>
+
+          ${auditModule.renderAuditTable(auditFilters)}
         </div>
-
-        <div class="card">
-          <div class="section-header">
-            <h3>Importação JSON</h3>
-          </div>
-          <p class="muted">Restaurar dados por arquivo JSON.</p>
-          <input id="backup-import-file" type="file" accept=".json,application/json" />
-          <div class="form-actions" style="margin-top:12px;">
-            <button class="btn btn-secondary" type="button" id="backup-import-btn">Importar backup</button>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="section-header">
-            <h3>Exportação Excel</h3>
-          </div>
-          <p class="muted">Exportar planilhas em um único arquivo.</p>
-          <div class="form-actions">
-            <button class="btn btn-secondary" type="button" id="excel-export-btn">Exportar Excel</button>
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="section-header">
-            <h3>Importação Excel</h3>
-          </div>
-          <p class="muted">Importar produtos, clientes e contas.</p>
-          <input id="excel-import-file" type="file" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" />
-          <div class="form-actions" style="margin-top:12px;">
-            <button class="btn btn-secondary" type="button" id="excel-import-btn">Importar Excel</button>
-          </div>
-        </div>
-      </div>
-
-      <div style="margin-top:18px;">
-        ${cashierModule.renderCashSessionPanel()}
-        ${cashierModule.renderHistoryTable()}
-      </div>
-
-      <div class="table-card" style="margin-top:18px;">
-        <div class="section-header">
-          <h2>Auditoria</h2>
-          <span class="muted">Filtro refinado dos eventos do sistema</span>
-        </div>
-
-        <div class="search-row" style="margin-bottom:14px; flex-wrap:wrap;">
-          <input id="audit-filter-module" placeholder="Módulo" value="${escapeHtml(auditFilters.module)}" />
-          <input id="audit-filter-action" placeholder="Ação" value="${escapeHtml(auditFilters.action)}" />
-          <input id="audit-filter-entity-type" placeholder="Tipo" value="${escapeHtml(auditFilters.entityType)}" />
-          <input id="audit-filter-entity-label" placeholder="Registro" value="${escapeHtml(auditFilters.entityLabel)}" />
-          <input id="audit-filter-user" placeholder="Usuário" value="${escapeHtml(auditFilters.user)}" />
-          <input id="audit-filter-date-from" type="date" value="${auditFilters.dateFrom}" />
-          <input id="audit-filter-date-to" type="date" value="${auditFilters.dateTo}" />
-          <button class="btn btn-secondary" id="audit-filter-apply">Filtrar</button>
-          <button class="btn btn-secondary" id="audit-filter-clear">Limpar</button>
-        </div>
-
-        ${auditModule.renderAuditTable(auditFilters)}
       </div>
     `;
 
     bindEvents();
   }
 
-  return {
-    render
-  };
+  return { render };
 }

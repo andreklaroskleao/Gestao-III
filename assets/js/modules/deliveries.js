@@ -115,6 +115,7 @@ export function createDeliveriesModule(ctx) {
     form.elements.totalAmount.value = delivery?.totalAmount ?? '';
     form.elements.scheduledDate.value = delivery?.scheduledDate || normalizeScheduledDate(delivery?.scheduledAt) || '';
     form.elements.scheduledTime.value = delivery?.scheduledTime || '';
+
     const clientIdInput = form.querySelector('#delivery-client-id');
     const clientSelectedInput = form.querySelector('#delivery-client-selected');
 
@@ -179,6 +180,31 @@ export function createDeliveriesModule(ctx) {
     showToast(`Status alterado para ${nextStatus}.`, 'success');
   }
 
+  function openDeliveryActions(deliveryId) {
+    window.openActionsSheet?.('Ações da entrega', [
+      {
+        label: 'Iniciar',
+        className: 'btn btn-secondary',
+        onClick: async () => updateDeliveryStatus(deliveryId, 'Em rota')
+      },
+      {
+        label: 'Concluir',
+        className: 'btn btn-success',
+        onClick: async () => updateDeliveryStatus(deliveryId, 'Concluído')
+      },
+      {
+        label: 'Cancelar',
+        className: 'btn btn-danger',
+        onClick: async () => updateDeliveryStatus(deliveryId, 'Cancelado')
+      },
+      {
+        label: 'Reagendar',
+        className: 'btn btn-secondary',
+        onClick: async () => updateDeliveryStatus(deliveryId, 'Reagendado')
+      }
+    ]);
+  }
+
   function renderDeliveryActions(item) {
     const status = String(item.status || '');
 
@@ -226,19 +252,13 @@ export function createDeliveriesModule(ctx) {
           aria-label="Editar"
         >✏️</button>
 
-        <details class="actions-menu">
-          <summary
-            class="icon-action-btn"
-            title="Mais ações"
-            aria-label="Mais ações"
-          >⋯</summary>
-          <div class="actions-menu-popover">
-            <button class="btn btn-secondary" type="button" data-delivery-status="${item.id}:Em rota">Iniciar</button>
-            <button class="btn btn-success" type="button" data-delivery-status="${item.id}:Concluído">Concluir</button>
-            <button class="btn btn-danger" type="button" data-delivery-status="${item.id}:Cancelado">Cancelar</button>
-            <button class="btn btn-secondary" type="button" data-delivery-status="${item.id}:Reagendado">Reagendar</button>
-          </div>
-        </details>
+        <button
+          class="icon-action-btn"
+          type="button"
+          data-delivery-more="${item.id}"
+          title="Mais ações"
+          aria-label="Mais ações"
+        >⋯</button>
       </div>
     `;
   }
@@ -255,6 +275,12 @@ export function createDeliveriesModule(ctx) {
       btn.addEventListener('click', async () => {
         const [id, nextStatus] = btn.dataset.deliveryStatus.split(':');
         await updateDeliveryStatus(id, nextStatus);
+      });
+    });
+
+    tabEls.deliveries.querySelectorAll('[data-delivery-more]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        openDeliveryActions(btn.dataset.deliveryMore);
       });
     });
   }

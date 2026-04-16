@@ -47,7 +47,8 @@ export function createProductsModule(ctx) {
   }
 
   function getProductSummary() {
-    const activeProducts = (state.products || []).filter((item) => item.status !== 'inativo');
+    const allProducts = state.products || [];
+    const activeProducts = allProducts.filter((item) => item.status !== 'inativo');
     const lowStockCount = activeProducts.filter((item) => Number(item.quantity || 0) <= Number(state.settings?.lowStockThreshold || 5)).length;
     const totalUnits = activeProducts.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
     const inventoryValue = activeProducts.reduce((sum, item) => {
@@ -55,6 +56,7 @@ export function createProductsModule(ctx) {
     }, 0);
 
     return {
+      totalCount: allProducts.length,
       activeCount: activeProducts.length,
       lowStockCount,
       totalUnits,
@@ -75,7 +77,7 @@ export function createProductsModule(ctx) {
         const product = state.products.find((item) => item.id === btn.dataset.productDelete);
 
         await updateByPath('products', btn.dataset.productDelete, {
-          deleted: true,
+          deleted: false,
           status: 'inativo'
         });
 
@@ -85,7 +87,27 @@ export function createProductsModule(ctx) {
           entityType: 'product',
           entityId: btn.dataset.productDelete,
           entityLabel: product?.name || '',
-          description: 'Produto inativado logicamente.'
+          description: 'Produto inativado.'
+        });
+      });
+    });
+
+    scope.querySelectorAll('[data-product-reactivate]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const product = state.products.find((item) => item.id === btn.dataset.productReactivate);
+
+        await updateByPath('products', btn.dataset.productReactivate, {
+          deleted: false,
+          status: 'ativo'
+        });
+
+        await auditModule.log({
+          module: 'products',
+          action: 'reactivate',
+          entityType: 'product',
+          entityId: btn.dataset.productReactivate,
+          entityLabel: product?.name || '',
+          description: 'Produto reativado.'
         });
       });
     });
@@ -205,6 +227,25 @@ export function createProductsModule(ctx) {
     bindProductTableActions(tabEls.products);
   }
 
+  function renderActionButtons(product) {
+    if (product.status === 'inativo') {
+      return `
+        <div class="clean-table-actions">
+          <button class="btn btn-secondary" type="button" data-product-edit="${product.id}">Editar</button>
+          <button class="btn btn-secondary" type="button" data-product-reactivate="${product.id}">Reativar</button>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="clean-table-actions">
+        <button class="btn btn-secondary" type="button" data-product-edit="${product.id}">Editar</button>
+        <button class="btn btn-secondary" type="button" data-product-move="${product.id}">Movimentar</button>
+        <button class="btn btn-danger" type="button" data-product-delete="${product.id}">Inativar</button>
+      </div>
+    `;
+  }
+
   function render() {
     const rows = getFilteredProducts();
     const editing = getEditingProduct();
@@ -214,16 +255,16 @@ export function createProductsModule(ctx) {
       <div class="section-stack">
         <div class="cards-grid">
           <div class="metric-card">
+            <span>Total de produtos</span>
+            <strong>${summary.totalCount}</strong>
+          </div>
+          <div class="metric-card">
             <span>Produtos ativos</span>
             <strong>${summary.activeCount}</strong>
           </div>
           <div class="metric-card">
             <span>Estoque baixo</span>
             <strong>${summary.lowStockCount}</strong>
-          </div>
-          <div class="metric-card">
-            <span>Unidades em estoque</span>
-            <strong>${summary.totalUnits}</strong>
           </div>
           <div class="metric-card">
             <span>Valor em custo</span>
@@ -346,13 +387,7 @@ export function createProductsModule(ctx) {
                         <td>${currency(product.salePrice)}</td>
                         <td>${product.quantity ?? 0}</td>
                         <td><span class="tag ${product.status === 'ativo' ? 'success' : 'warning'}">${product.status || 'ativo'}</span></td>
-                        <td>
-                          <div class="clean-table-actions">
-                            <button class="btn btn-secondary" type="button" data-product-edit="${product.id}">Editar</button>
-                            <button class="btn btn-secondary" type="button" data-product-move="${product.id}">Movimentar</button>
-                            <button class="btn btn-danger" type="button" data-product-delete="${product.id}">Inativar</button>
-                          </div>
-                        </td>
+                        <td>${renderActionButtons(product)}</td>
                       </tr>
                     `).join('') || '<tr><td colspan="9">Nenhum produto cadastrado.</td></tr>'}
                   </tbody>

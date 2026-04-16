@@ -72,7 +72,9 @@ const els = {
   stockAlertBtn: document.getElementById('stock-alert-btn'),
   stockAlertCount: document.getElementById('stock-alert-count'),
   stockAlertList: document.getElementById('stock-alert-list'),
-  alertsPanel: document.getElementById('alerts-panel')
+  alertsPanel: document.getElementById('alerts-panel'),
+  sidebarToggle: document.getElementById('sidebar-toggle'),
+  mobileSidebarToggle: document.getElementById('mobile-sidebar-toggle')
 };
 
 const tabEls = {
@@ -123,7 +125,42 @@ const state = {
   }
 };
 
+const SIDEBAR_STORAGE_KEY = 'gestao-sidebar-collapsed';
+
+function isMobileViewport() {
+  return window.matchMedia('(max-width: 920px)').matches;
+}
+
+function applySidebarState() {
+  const collapsed = localStorage.getItem(SIDEBAR_STORAGE_KEY) === 'true';
+
+  document.body.classList.toggle('sidebar-collapsed', !isMobileViewport() && collapsed);
+
+  if (isMobileViewport()) {
+    document.body.classList.remove('sidebar-open');
+  }
+}
+
+function toggleSidebar() {
+  if (isMobileViewport()) {
+    document.body.classList.toggle('sidebar-open');
+    return;
+  }
+
+  const nextCollapsed = !document.body.classList.contains('sidebar-collapsed');
+  document.body.classList.toggle('sidebar-collapsed', nextCollapsed);
+  localStorage.setItem(SIDEBAR_STORAGE_KEY, String(nextCollapsed));
+}
+
+function closeMobileSidebar() {
+  if (isMobileViewport()) {
+    document.body.classList.remove('sidebar-open');
+  }
+}
+
 initTheme();
+applySidebarState();
+window.addEventListener('resize', applySidebarState);
 
 const auditModule = createAuditModule({
   state,
@@ -672,15 +709,30 @@ els.nav.addEventListener('click', (event) => {
   }
 
   activateTab(tab);
+  closeMobileSidebar();
 });
 
 els.stockAlertBtn.addEventListener('click', () => {
   els.alertsPanel.classList.toggle('hidden');
 });
 
+els.sidebarToggle?.addEventListener('click', toggleSidebar);
+els.mobileSidebarToggle?.addEventListener('click', toggleSidebar);
+
 document.addEventListener('click', (event) => {
   if (!els.alertsPanel.contains(event.target) && !els.stockAlertBtn.contains(event.target)) {
     els.alertsPanel.classList.add('hidden');
+  }
+});
+
+document.addEventListener('click', (event) => {
+  if (!isMobileViewport()) return;
+
+  const clickedInsideSidebar = event.target.closest('.sidebar');
+  const clickedToggle = event.target.closest('#sidebar-toggle') || event.target.closest('#mobile-sidebar-toggle');
+
+  if (!clickedInsideSidebar && !clickedToggle) {
+    document.body.classList.remove('sidebar-open');
   }
 });
 

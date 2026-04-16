@@ -76,6 +76,15 @@ export function createDeliveriesModule(ctx) {
     return 'info';
   }
 
+  function getSummary(filteredDeliveries) {
+    const total = filteredDeliveries.length;
+    const pending = filteredDeliveries.filter((item) => isPendingStatus(item.status)).length;
+    const today = filteredDeliveries.filter((item) => getDeliveryDateValue(item) === getTodayString()).length;
+    const concluded = filteredDeliveries.filter((item) => item.status === 'Concluído').length;
+
+    return { total, pending, today, concluded };
+  }
+
   async function handleDeliverySubmit(event) {
     event.preventDefault();
 
@@ -187,7 +196,7 @@ export function createDeliveriesModule(ctx) {
           <div class="modal-card">
             <div class="section-header">
               <h2>Selecionar cliente</h2>
-              <button class="btn btn-secondary" id="delivery-client-modal-close">Fechar</button>
+              <button class="btn btn-secondary" type="button" id="delivery-client-modal-close">Fechar</button>
             </div>
             <div id="delivery-client-picker-host"></div>
           </div>
@@ -226,95 +235,184 @@ export function createDeliveriesModule(ctx) {
 
   function render() {
     const filteredDeliveries = getFilteredDeliveries();
+    const summary = getSummary(filteredDeliveries);
 
     tabEls.deliveries.innerHTML = `
-      <div class="deliveries-layout">
-        <div class="panel">
-          <div class="section-header">
-            <h2>${state.editingDeliveryId ? 'Editar atendimento' : 'Agendar tele-entrega / recolhimento'}</h2>
+      <div class="section-stack">
+        <div class="cards-grid">
+          <div class="metric-card">
+            <span>Total filtrado</span>
+            <strong>${summary.total}</strong>
           </div>
-
-          <form id="delivery-form" class="form-grid mobile-optimized">
-            <input type="hidden" id="delivery-client-id" value="" />
-
-            <label style="grid-column:1 / -1;">Cliente selecionado<input id="delivery-client-selected" value="" placeholder="Nenhum cliente selecionado" readonly /></label>
-
-            <div class="form-actions" style="grid-column:1 / -1; justify-content:flex-start;">
-              <button class="btn btn-secondary" type="button" id="delivery-client-picker-btn">Selecionar cliente</button>
-              <button class="btn btn-secondary" type="button" id="delivery-client-clear-btn">Limpar cliente</button>
-            </div>
-
-            <label>Nome do cliente<input name="clientName" required /></label>
-            <label>Telefone<input name="phone" required /></label>
-            <label>Endereço<input name="address" required /></label>
-            <label>Valor cobrado<input name="amount" type="number" step="0.01" min="0" value="0" /></label>
-            <label>Forma de pagamento<select name="paymentMethod">${paymentMethods.map((item) => `<option value="${item}">${item}</option>`).join('')}</select></label>
-            <label>Data<input name="date" type="date" required /></label>
-            <label>Hora<input name="time" type="time" required /></label>
-            <label>Status<select name="status">${deliveryStatuses.map((item) => `<option value="${item}">${item}</option>`).join('')}</select></label>
-            <label style="grid-column:1 / -1;">Descrição<textarea name="description" required></textarea></label>
-            <label style="grid-column:1 / -1;">Observações<textarea name="notes"></textarea></label>
-
-            <div class="form-actions" style="grid-column:1 / -1;">
-              <button class="btn btn-primary" type="submit">${state.editingDeliveryId ? 'Salvar' : 'Criar agendamento'}</button>
-              <button class="btn btn-secondary" id="delivery-reset-btn" type="button">Limpar</button>
-            </div>
-          </form>
+          <div class="metric-card">
+            <span>Pendentes</span>
+            <strong>${summary.pending}</strong>
+          </div>
+          <div class="metric-card">
+            <span>Hoje</span>
+            <strong>${summary.today}</strong>
+          </div>
+          <div class="metric-card">
+            <span>Concluídos</span>
+            <strong>${summary.concluded}</strong>
+          </div>
         </div>
 
-        <div class="table-card">
-          <div class="section-header">
-            <h2>Agenda</h2>
-            <span class="muted">${filteredDeliveries.length} resultado(s)</span>
+        <div class="users-layout">
+          <div class="panel">
+            <div class="section-header">
+              <h2>${state.editingDeliveryId ? 'Editar atendimento' : 'Agendar tele-entrega / recolhimento'}</h2>
+              <span class="muted">${state.editingDeliveryId ? 'Atualize os dados do atendimento.' : 'Cadastro organizado para operação rápida.'}</span>
+            </div>
+
+            <form id="delivery-form" class="form-grid mobile-optimized">
+              <input type="hidden" id="delivery-client-id" value="" />
+
+              <div class="form-section" style="grid-column:1 / -1;">
+                <div class="form-section-title">
+                  <h3>1. Cliente</h3>
+                  <span>Seleção e identificação</span>
+                </div>
+                <div class="soft-divider"></div>
+
+                <label style="grid-column:1 / -1;">Cliente selecionado
+                  <input id="delivery-client-selected" value="" placeholder="Nenhum cliente selecionado" readonly />
+                </label>
+
+                <div class="form-actions" style="grid-column:1 / -1; justify-content:flex-start;">
+                  <button class="btn btn-secondary" type="button" id="delivery-client-picker-btn">Selecionar cliente</button>
+                  <button class="btn btn-secondary" type="button" id="delivery-client-clear-btn">Limpar cliente</button>
+                </div>
+
+                <div class="form-grid">
+                  <label>Nome do cliente<input name="clientName" required /></label>
+                  <label>Telefone<input name="phone" required /></label>
+                  <label style="grid-column:1 / -1;">Endereço<input name="address" required /></label>
+                </div>
+              </div>
+
+              <div class="form-section" style="grid-column:1 / -1;">
+                <div class="form-section-title">
+                  <h3>2. Agendamento</h3>
+                  <span>Data, hora e status</span>
+                </div>
+                <div class="soft-divider"></div>
+
+                <div class="form-grid">
+                  <label>Data<input name="date" type="date" required /></label>
+                  <label>Hora<input name="time" type="time" required /></label>
+                  <label>Status
+                    <select name="status">
+                      ${deliveryStatuses.map((item) => `<option value="${item}">${item}</option>`).join('')}
+                    </select>
+                  </label>
+                  <label>Forma de pagamento
+                    <select name="paymentMethod">
+                      ${paymentMethods.map((item) => `<option value="${item}">${item}</option>`).join('')}
+                    </select>
+                  </label>
+                </div>
+              </div>
+
+              <div class="form-section" style="grid-column:1 / -1;">
+                <div class="form-section-title">
+                  <h3>3. Atendimento</h3>
+                  <span>Descrição e valor</span>
+                </div>
+                <div class="soft-divider"></div>
+
+                <div class="form-grid">
+                  <label>Valor cobrado<input name="amount" type="number" step="0.01" min="0" value="0" /></label>
+                  <label style="grid-column:1 / -1;">Descrição<textarea name="description" required></textarea></label>
+                  <label style="grid-column:1 / -1;">Observações<textarea name="notes"></textarea></label>
+                </div>
+              </div>
+
+              <div class="form-actions" style="grid-column:1 / -1;">
+                <button class="btn btn-primary" type="submit">${state.editingDeliveryId ? 'Salvar' : 'Criar agendamento'}</button>
+                <button class="btn btn-secondary" id="delivery-reset-btn" type="button">Limpar</button>
+              </div>
+            </form>
           </div>
 
-          <div class="search-row" style="margin-bottom:14px; flex-wrap:wrap;">
-            <input id="delivery-filter-date" type="date" value="${deliveryFilters.date || ''}" />
-            <select id="delivery-filter-status">
-              <option value="">Todos os status</option>
-              ${deliveryStatuses.map((item) => `<option value="${item}" ${deliveryFilters.status === item ? 'selected' : ''}>${item}</option>`).join('')}
-            </select>
-            <input id="delivery-filter-client" placeholder="Cliente" value="${escapeHtml(deliveryFilters.client || '')}" />
-            <input id="delivery-filter-phone" placeholder="Telefone" value="${escapeHtml(deliveryFilters.phone || '')}" />
-            <button class="btn btn-secondary" id="delivery-filter-apply">Filtrar</button>
-            <button class="btn btn-secondary" id="delivery-filter-today">Hoje</button>
-            <button class="btn btn-secondary" id="delivery-filter-pending">Pendentes</button>
-            <button class="btn btn-secondary" id="delivery-filter-clear">Limpar filtros</button>
-          </div>
+          <div class="section-stack">
+            <div class="table-card">
+              <div class="section-header">
+                <h2>Agenda</h2>
+                <span class="muted">${filteredDeliveries.length} resultado(s)</span>
+              </div>
 
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Cliente</th>
-                  <th>Data</th>
-                  <th>Telefone</th>
-                  <th>Status</th>
-                  <th>Valor</th>
-                  <th>Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${filteredDeliveries.map((item) => `
-                  <tr>
-                    <td>${escapeHtml(item.clientName)}</td>
-                    <td>${formatDate(item.scheduledAt)} ${item.time || ''}</td>
-                    <td>${escapeHtml(item.phone)}</td>
-                    <td><span class="tag ${deliveryStatusClass(item.status)}">${item.status}</span></td>
-                    <td>${currency(item.amount)}</td>
-                    <td>
-                      <div class="inline-row">
-                        <button class="btn btn-secondary" data-delivery-edit="${item.id}">Editar</button>
-                        <button class="btn btn-success" data-delivery-status="${item.id}:Concluído">Concluir</button>
-                        <button class="btn btn-danger" data-delivery-status="${item.id}:Cancelado">Cancelar</button>
-                        <button class="btn btn-secondary" data-delivery-status="${item.id}:Em rota">Iniciar</button>
-                        <button class="btn btn-secondary" data-delivery-status="${item.id}:Reagendado">Reagendar</button>
-                      </div>
-                    </td>
-                  </tr>
-                `).join('') || '<tr><td colspan="6">Nenhum atendimento encontrado.</td></tr>'}
-              </tbody>
-            </table>
+              <div class="search-row" style="margin-bottom:14px; flex-wrap:wrap;">
+                <input id="delivery-filter-date" type="date" value="${deliveryFilters.date || ''}" />
+                <select id="delivery-filter-status">
+                  <option value="">Todos os status</option>
+                  ${deliveryStatuses.map((item) => `<option value="${item}" ${deliveryFilters.status === item ? 'selected' : ''}>${item}</option>`).join('')}
+                </select>
+                <input id="delivery-filter-client" placeholder="Cliente" value="${escapeHtml(deliveryFilters.client || '')}" />
+                <input id="delivery-filter-phone" placeholder="Telefone" value="${escapeHtml(deliveryFilters.phone || '')}" />
+                <button class="btn btn-secondary" type="button" id="delivery-filter-apply">Filtrar</button>
+                <button class="btn btn-secondary" type="button" id="delivery-filter-today">Hoje</button>
+                <button class="btn btn-secondary" type="button" id="delivery-filter-pending">Pendentes</button>
+                <button class="btn btn-secondary" type="button" id="delivery-filter-clear">Limpar filtros</button>
+              </div>
+
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Cliente</th>
+                      <th>Data</th>
+                      <th>Telefone</th>
+                      <th>Status</th>
+                      <th>Valor</th>
+                      <th>Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${filteredDeliveries.map((item) => `
+                      <tr>
+                        <td>${escapeHtml(item.clientName)}</td>
+                        <td>${formatDate(item.scheduledAt)} ${item.time || ''}</td>
+                        <td>${escapeHtml(item.phone)}</td>
+                        <td><span class="tag ${deliveryStatusClass(item.status)}">${item.status}</span></td>
+                        <td>${currency(item.amount)}</td>
+                        <td>
+                          <div class="clean-table-actions">
+                            <button class="btn btn-secondary" type="button" data-delivery-edit="${item.id}">Editar</button>
+                            <button class="btn btn-success" type="button" data-delivery-status="${item.id}:Concluído">Concluir</button>
+                            <button class="btn btn-danger" type="button" data-delivery-status="${item.id}:Cancelado">Cancelar</button>
+                            <button class="btn btn-secondary" type="button" data-delivery-status="${item.id}:Em rota">Iniciar</button>
+                            <button class="btn btn-secondary" type="button" data-delivery-status="${item.id}:Reagendado">Reagendar</button>
+                          </div>
+                        </td>
+                      </tr>
+                    `).join('') || '<tr><td colspan="6">Nenhum atendimento encontrado.</td></tr>'}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="card summary-highlight">
+              <div class="section-header">
+                <h3>Visão rápida</h3>
+                <span class="badge-soft">Operação</span>
+              </div>
+
+              <div class="kpi-inline">
+                <div class="compact-card">
+                  <span class="muted">Pendentes</span>
+                  <strong>${summary.pending}</strong>
+                </div>
+                <div class="compact-card">
+                  <span class="muted">Hoje</span>
+                  <strong>${summary.today}</strong>
+                </div>
+                <div class="compact-card">
+                  <span class="muted">Concluídos</span>
+                  <strong>${summary.concluded}</strong>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>

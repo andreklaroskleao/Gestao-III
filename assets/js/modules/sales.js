@@ -3,8 +3,8 @@ import { escapeHtml, showToast } from './ui.js';
 export function createSalesModule(ctx) {
   const {
     state,
-    refs,
     tabEls,
+    refs,
     createDoc,
     updateByPath,
     currency,
@@ -79,6 +79,27 @@ export function createSalesModule(ctx) {
     tabEls.sales.querySelector('#sale-total').textContent = currency(total);
     tabEls.sales.querySelector('#sale-change').textContent = currency(change);
     tabEls.sales.querySelector('#sale-items-count').textContent = String(state.cart.length);
+  }
+
+  function normalizeSaleForPrint(sale) {
+    return {
+      customerName: sale.customerName || '',
+      paymentMethod: sale.paymentMethod || '',
+      subtotal: Number(sale.subtotal || 0),
+      discount: Number(sale.discount || 0),
+      total: Number(sale.total || 0),
+      amountPaid: Number(sale.amountPaid || 0),
+      change: Number(sale.change || 0),
+      items: Array.isArray(sale.items)
+        ? sale.items.map((item) => ({
+            productId: item.productId || '',
+            name: item.name || '',
+            quantity: Number(item.quantity || 0),
+            unitPrice: Number(item.unitPrice || 0),
+            total: Number(item.total || 0)
+          }))
+        : []
+    };
   }
 
   function findProductByBarcode(barcode) {
@@ -526,9 +547,9 @@ export function createSalesModule(ctx) {
       items: state.cart.map((item) => ({
         productId: item.id,
         name: item.name,
-        quantity: item.quantity,
-        unitPrice: item.salePrice,
-        total: item.salePrice * item.quantity
+        quantity: Number(item.quantity || 0),
+        unitPrice: Number(item.salePrice || 0),
+        total: Number(item.salePrice || 0) * Number(item.quantity || 0)
       }))
     };
 
@@ -550,7 +571,7 @@ export function createSalesModule(ctx) {
   }
 
   function printReceipt(sale) {
-    printModule.printSaleReceipt(sale);
+    printModule.printSaleReceipt(normalizeSaleForPrint(sale));
   }
 
   function getFilteredSales() {
@@ -770,9 +791,22 @@ export function createSalesModule(ctx) {
                   <td>${escapeHtml(sale.paymentMethod || '-')}</td>
                   <td>${sale.items?.length || 0}</td>
                   <td>
-                    <div class="clean-table-actions">
-                      <button class="btn btn-secondary" type="button" data-sale-view-modal="${sale.id}">Detalhes</button>
-                      <button class="btn btn-primary" type="button" data-sale-reprint-modal="${sale.id}">Reimprimir</button>
+                    <div class="actions-inline-compact">
+                      <button
+                        class="icon-action-btn"
+                        type="button"
+                        data-sale-view-modal="${sale.id}"
+                        title="Detalhes"
+                        aria-label="Detalhes"
+                      >👁️</button>
+
+                      <button
+                        class="icon-action-btn info"
+                        type="button"
+                        data-sale-reprint-modal="${sale.id}"
+                        title="Reimprimir"
+                        aria-label="Reimprimir"
+                      >🖨️</button>
                     </div>
                   </td>
                 </tr>
@@ -792,9 +826,22 @@ export function createSalesModule(ctx) {
               <span><strong>Pagamento:</strong> ${escapeHtml(sale.paymentMethod || '-')}</span>
               <span><strong>Itens:</strong> ${sale.items?.length || 0}</span>
             </div>
-            <div class="sale-card-actions">
-              <button class="btn btn-secondary" type="button" data-sale-view-modal="${sale.id}">Detalhes</button>
-              <button class="btn btn-primary" type="button" data-sale-reprint-modal="${sale.id}">Reimprimir</button>
+            <div class="actions-inline-compact">
+              <button
+                class="icon-action-btn"
+                type="button"
+                data-sale-view-modal="${sale.id}"
+                title="Detalhes"
+                aria-label="Detalhes"
+              >👁️</button>
+
+              <button
+                class="icon-action-btn info"
+                type="button"
+                data-sale-reprint-modal="${sale.id}"
+                title="Reimprimir"
+                aria-label="Reimprimir"
+              >🖨️</button>
             </div>
           </div>
         `).join('') || '<div class="empty-state">Nenhuma venda registrada.</div>'}

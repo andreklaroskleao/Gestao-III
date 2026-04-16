@@ -1903,3 +1903,146 @@ tbody tr:hover {
     min-height: 96px;
   }
 }
+
+/* CORRECAO GLOBAL DE CAMPOS GRANDES NO MOBILE */
+
+@media (max-width: 920px) {
+  .search-row,
+  .inline-row,
+  .clean-table-actions,
+  .cart-actions,
+  .form-actions {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    width: 100% !important;
+    gap: 10px !important;
+  }
+
+  .search-row > *,
+  .inline-row > *,
+  .clean-table-actions > *,
+  .cart-actions > *,
+  .form-actions > * {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+
+    /* AQUI ESTA A CORRECAO MAIS IMPORTANTE */
+    flex: 0 0 auto !important;
+  }
+
+  .search-row > input,
+  .search-row > select,
+  .search-row > button,
+  .inline-row > input,
+  .inline-row > select,
+  .inline-row > button,
+  .form-actions > button,
+  .clean-table-actions > button,
+  .cart-actions > button {
+    height: 42px !important;
+    min-height: 42px !important;
+  }
+
+  input,
+  select,
+  button {
+    flex: 0 0 auto !important;
+  }
+
+  textarea {
+    min-height: 88px !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .search-row,
+  .inline-row,
+  .clean-table-actions,
+  .cart-actions,
+  .form-actions {
+    gap: 8px !important;
+  }
+
+  .search-row > input,
+  .search-row > select,
+  .search-row > button,
+  .inline-row > input,
+  .inline-row > select,
+  .inline-row > button,
+  .form-actions > button,
+  .clean-table-actions > button,
+  .cart-actions > button,
+  input,
+  select,
+  button {
+    height: 40px !important;
+    min-height: 40px !important;
+  }
+
+  textarea {
+    min-height: 82px !important;
+  }
+}
+
+/* FILTROS E BLOCOS COMPACTOS */
+
+.compact-filters,
+.modal-filters,
+.table-filters {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.compact-filters > *,
+.modal-filters > *,
+.table-filters > * {
+  min-width: 0;
+}
+
+@media (max-width: 920px) {
+  .compact-filters,
+  .modal-filters,
+  .table-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .compact-filters > *,
+  .modal-filters > *,
+  .table-filters > * {
+    height: 40px;
+    min-height: 40px;
+  }
+}
+
+@media (max-width: 640px) {
+  .compact-filters,
+  .modal-filters,
+  .table-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .compact-filters > *,
+  .modal-filters > *,
+  .table-filters > * {
+    height: 38px;
+    min-height: 38px;
+  }
+}
+
+/* SELECTS MAIS CONSISTENTES NO MOBILE */
+
+select {
+  line-height: 1.2;
+}
+
+@media (max-width: 920px) {
+  select {
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    line-height: 1.2 !important;
+  }
+}

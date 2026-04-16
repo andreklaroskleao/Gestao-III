@@ -570,9 +570,63 @@ function renderStockAlerts() {
     || '<div class="empty-state">Sem alertas no momento.</div>';
 }
 
-function bootstrapData() {
-  state.unsubscribe.forEach((unsubscribe) => unsubscribe());
+function unsubscribeAll() {
+  state.unsubscribe.forEach((unsubscribe) => {
+    try {
+      unsubscribe();
+    } catch (error) {
+      console.error(error);
+    }
+  });
+
   state.unsubscribe = [];
+}
+
+function resetAppState() {
+  unsubscribeAll();
+
+  state.currentUser = null;
+  state.activeTab = 'dashboard';
+  state.users = [];
+  state.products = [];
+  state.sales = [];
+  state.deliveries = [];
+  state.clients = [];
+  state.suppliers = [];
+  state.inventoryMovements = [];
+  state.auditLogs = [];
+  state.cashSessions = [];
+  state.accountsReceivable = [];
+  state.accountsPayable = [];
+  state.purchaseOrders = [];
+  state.purchases = [];
+  state.cart = [];
+  state.editingProductId = null;
+  state.editingUserId = null;
+  state.editingDeliveryId = null;
+  state.editingClientId = null;
+  state.editingSupplierId = null;
+
+  document.body.classList.remove('sidebar-open');
+  els.alertsPanel.classList.add('hidden');
+  els.stockAlertList.innerHTML = '';
+  els.stockAlertCount.textContent = '0';
+
+  Object.values(tabEls).forEach((panel) => {
+    if (panel) {
+      panel.innerHTML = '';
+      panel.classList.remove('active');
+    }
+  });
+
+  els.currentUserName.textContent = 'Usuário';
+  els.pageTitle.textContent = 'Dashboard';
+  els.pageSubtitle.textContent = 'Área: Dashboard.';
+  els.loginForm.reset();
+}
+
+function bootstrapData() {
+  unsubscribeAll();
 
   state.unsubscribe.push(subscribeCollection('users', [orderBy('fullName')], (rows) => {
     state.users = rows;
@@ -689,13 +743,19 @@ async function handleLogin(event) {
   }
 }
 
-els.loginForm.addEventListener('submit', handleLogin);
+async function handleLogout() {
+  try {
+    await logout();
+  } catch (error) {
+    console.error('Erro ao sair:', error);
+  } finally {
+    resetAppState();
+    setScreen(false);
+  }
+}
 
-els.logoutBtn.addEventListener('click', async () => {
-  await logout();
-  state.currentUser = null;
-  setScreen(false);
-});
+els.loginForm.addEventListener('submit', handleLogin);
+els.logoutBtn.addEventListener('click', handleLogout);
 
 els.nav.addEventListener('click', (event) => {
   const btn = event.target.closest('[data-tab]');
@@ -740,6 +800,7 @@ watchAuth(async (user) => {
   state.currentUser = user;
 
   if (!user) {
+    resetAppState();
     setScreen(false);
     return;
   }

@@ -60,7 +60,6 @@ export function createProductsModule(ctx) {
     const allProducts = state.products || [];
     const activeProducts = allProducts.filter((item) => item.status !== 'inativo');
     const lowStockCount = activeProducts.filter((item) => Number(item.quantity || 0) <= Number(state.settings?.lowStockThreshold || 5)).length;
-    const totalUnits = activeProducts.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
     const inventoryValue = activeProducts.reduce((sum, item) => {
       return sum + (Number(item.quantity || 0) * Number(item.costPrice || 0));
     }, 0);
@@ -69,73 +68,8 @@ export function createProductsModule(ctx) {
       totalCount: allProducts.length,
       activeCount: activeProducts.length,
       lowStockCount,
-      totalUnits,
       inventoryValue
     };
-  }
-
-  function bindProductTableActions(scope) {
-    scope.querySelectorAll('[data-product-edit]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        state.editingProductId = btn.dataset.productEdit;
-        render();
-      });
-    });
-
-    scope.querySelectorAll('[data-product-delete]').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        const product = state.products.find((item) => item.id === btn.dataset.productDelete);
-
-        await updateByPath('products', btn.dataset.productDelete, {
-          deleted: false,
-          status: 'inativo'
-        });
-
-        await auditModule.log({
-          module: 'products',
-          action: 'inactivate',
-          entityType: 'product',
-          entityId: btn.dataset.productDelete,
-          entityLabel: product?.name || '',
-          description: 'Produto inativado.'
-        });
-      });
-    });
-
-    scope.querySelectorAll('[data-product-reactivate]').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        const product = state.products.find((item) => item.id === btn.dataset.productReactivate);
-
-        await updateByPath('products', btn.dataset.productReactivate, {
-          deleted: false,
-          status: 'ativo'
-        });
-
-        await auditModule.log({
-          module: 'products',
-          action: 'reactivate',
-          entityType: 'product',
-          entityId: btn.dataset.productReactivate,
-          entityLabel: product?.name || '',
-          description: 'Produto reativado.'
-        });
-      });
-    });
-
-    scope.querySelectorAll('[data-product-move]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        inventoryModule.renderMovementModal(btn.dataset.productMove, render);
-      });
-    });
-  }
-
-  function applyMovementFilters() {
-    movementFilters.product = tabEls.products.querySelector('#movement-filter-product')?.value || '';
-    movementFilters.type = tabEls.products.querySelector('#movement-filter-type')?.value || '';
-    movementFilters.reason = tabEls.products.querySelector('#movement-filter-reason')?.value || '';
-    movementFilters.dateFrom = tabEls.products.querySelector('#movement-filter-date-from')?.value || '';
-    movementFilters.dateTo = tabEls.products.querySelector('#movement-filter-date-to')?.value || '';
-    render();
   }
 
   async function handleProductSubmit(event) {
@@ -169,6 +103,7 @@ export function createProductsModule(ctx) {
       });
 
       state.editingProductId = null;
+      showToast('Produto atualizado.', 'success');
     } else {
       const createdId = await createDoc(refs.products, payload);
 
@@ -180,6 +115,8 @@ export function createProductsModule(ctx) {
         entityLabel: payload.name || '',
         description: 'Produto cadastrado.'
       });
+
+      showToast('Produto cadastrado.', 'success');
     }
 
     form.reset();
@@ -188,7 +125,7 @@ export function createProductsModule(ctx) {
 
   function fillEditingForm(form) {
     const editing = getEditingProduct();
-    if (!editing) return;
+    if (!editing || !form) return;
 
     Object.entries(editing).forEach(([key, value]) => {
       if (form.elements[key]) {
@@ -251,8 +188,7 @@ export function createProductsModule(ctx) {
     `;
 
     const closeModal = () => {
-      stopBarcodeScanner();
-      modalRoot.innerHTML = '';
+      closeBarcodeScannerModal();
     };
 
     modalRoot.querySelector('#product-barcode-modal-close').addEventListener('click', closeModal);
@@ -266,9 +202,10 @@ export function createProductsModule(ctx) {
 
   function closeBarcodeScannerModal() {
     const modalRoot = getScannerModalRoot();
-    if (!modalRoot) return;
     stopBarcodeScanner();
-    modalRoot.innerHTML = '';
+    if (modalRoot) {
+      modalRoot.innerHTML = '';
+    }
   }
 
   function setBarcodeValue(value) {
@@ -351,7 +288,6 @@ export function createProductsModule(ctx) {
         if (!value) return;
 
         setBarcodeValue(value);
-        setScannerStatus(`Código capturado: ${value}`, 'success');
         showToast('Código de barras capturado.', 'success');
         closeBarcodeScannerModal();
       } catch (error) {
@@ -386,7 +322,6 @@ export function createProductsModule(ctx) {
           if (!value) return;
 
           setBarcodeValue(value);
-          setScannerStatus(`Código capturado: ${value}`, 'success');
           showToast('Código de barras capturado.', 'success');
           closeBarcodeScannerModal();
         }
@@ -431,6 +366,161 @@ export function createProductsModule(ctx) {
     scannerRunning = false;
   }
 
+  function applyMovementFilters() {
+    movementFilters.product = tabEls.products.querySelector('#movement-filter-product')?.value || '';
+    movementFilters.type = tabEls.products.querySelector('#movement-filter-type')?.value || '';
+    movementFilters.reason = tabEls.products.querySelector('#movement-filter-reason')?.value || '';
+    movementFilters.dateFrom = tabEls.products.querySelector('#movement-filter-date-from')?.value || '';
+    movementFilters.dateTo = tabEls.products.querySelector('#movement-filter-date-to')?.value || '';
+    render();
+  }
+
+  function renderActionButtons(product) {
+    if (product.status === 'inativo') {
+      return `
+        <div class="actions-inline-compact">
+          <button
+            class="icon-action-btn"
+            type="button"
+            data-product-edit="${product.id}"
+            title="Editar"
+            aria-label="Editar"
+          >✏️</button>
+
+          <details class="actions-menu">
+            <summary
+              class="icon-action-btn"
+              title="Mais ações"
+              aria-label="Mais ações"
+            >⋯</summary>
+            <div class="actions-menu-popover">
+              <button
+                class="btn btn-secondary"
+                type="button"
+                data-product-reactivate="${product.id}"
+              >Reativar</button>
+            </div>
+          </details>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="actions-inline-compact">
+        <button
+          class="icon-action-btn"
+          type="button"
+          data-product-edit="${product.id}"
+          title="Editar"
+          aria-label="Editar"
+        >✏️</button>
+
+        <button
+          class="icon-action-btn info"
+          type="button"
+          data-product-move="${product.id}"
+          title="Movimentar estoque"
+          aria-label="Movimentar estoque"
+        >📦</button>
+
+        <details class="actions-menu">
+          <summary
+            class="icon-action-btn"
+            title="Mais ações"
+            aria-label="Mais ações"
+          >⋯</summary>
+          <div class="actions-menu-popover">
+            <button
+              class="btn btn-danger"
+              type="button"
+              data-product-delete="${product.id}"
+            >Inativar</button>
+          </div>
+        </details>
+      </div>
+    `;
+  }
+
+  function bindProductTableActions(scope) {
+    scope.querySelectorAll('[data-product-edit]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        state.editingProductId = btn.dataset.productEdit;
+        render();
+      });
+    });
+
+    scope.querySelectorAll('[data-product-delete]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const product = state.products.find((item) => item.id === btn.dataset.productDelete);
+
+        await updateByPath('products', btn.dataset.productDelete, {
+          deleted: false,
+          status: 'inativo'
+        });
+
+        await auditModule.log({
+          module: 'products',
+          action: 'inactivate',
+          entityType: 'product',
+          entityId: btn.dataset.productDelete,
+          entityLabel: product?.name || '',
+          description: 'Produto inativado.'
+        });
+
+        showToast('Produto inativado.', 'success');
+      });
+    });
+
+    scope.querySelectorAll('[data-product-reactivate]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const product = state.products.find((item) => item.id === btn.dataset.productReactivate);
+
+        await updateByPath('products', btn.dataset.productReactivate, {
+          deleted: false,
+          status: 'ativo'
+        });
+
+        await auditModule.log({
+          module: 'products',
+          action: 'reactivate',
+          entityType: 'product',
+          entityId: btn.dataset.productReactivate,
+          entityLabel: product?.name || '',
+          description: 'Produto reativado.'
+        });
+
+        showToast('Produto reativado.', 'success');
+      });
+    });
+
+    scope.querySelectorAll('[data-product-move]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        inventoryModule.renderMovementModal(btn.dataset.productMove, render);
+      });
+    });
+  }
+
+  function renderBarcodeButton() {
+    return `
+      <button
+        class="icon-btn"
+        type="button"
+        id="product-barcode-capture-btn"
+        title="Capturar código de barras"
+        aria-label="Capturar código de barras"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M4 7v10"></path>
+          <path d="M7 7v10"></path>
+          <path d="M10 7v10"></path>
+          <path d="M14 7v10"></path>
+          <path d="M17 7v10"></path>
+          <path d="M20 7v10"></path>
+        </svg>
+      </button>
+    `;
+  }
+
   function bindEvents() {
     const form = tabEls.products.querySelector('#product-form');
 
@@ -472,46 +562,6 @@ export function createProductsModule(ctx) {
     tabEls.products.querySelector('#product-barcode-capture-btn')?.addEventListener('click', handleBarcodeCaptureClick);
 
     bindProductTableActions(tabEls.products);
-  }
-
-  function renderActionButtons(product) {
-    if (product.status === 'inativo') {
-      return `
-        <div class="clean-table-actions">
-          <button class="btn btn-secondary" type="button" data-product-edit="${product.id}">Editar</button>
-          <button class="btn btn-secondary" type="button" data-product-reactivate="${product.id}">Reativar</button>
-        </div>
-      `;
-    }
-
-    return `
-      <div class="clean-table-actions">
-        <button class="btn btn-secondary" type="button" data-product-edit="${product.id}">Editar</button>
-        <button class="btn btn-secondary" type="button" data-product-move="${product.id}">Movimentar</button>
-        <button class="btn btn-danger" type="button" data-product-delete="${product.id}">Inativar</button>
-      </div>
-    `;
-  }
-
-  function renderBarcodeButton() {
-    return `
-      <button
-        class="icon-btn"
-        type="button"
-        id="product-barcode-capture-btn"
-        title="Capturar código de barras"
-        aria-label="Capturar código de barras"
-      >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M4 7v10"></path>
-          <path d="M7 7v10"></path>
-          <path d="M10 7v10"></path>
-          <path d="M14 7v10"></path>
-          <path d="M17 7v10"></path>
-          <path d="M20 7v10"></path>
-        </svg>
-      </button>
-    `;
   }
 
   function render() {
@@ -656,14 +706,14 @@ export function createProductsModule(ctx) {
                   <tbody id="products-tbody">
                     ${rows.map((product) => `
                       <tr>
-                        <td>${escapeHtml(product.name)}</td>
+                        <td>${escapeHtml(product.name || '-')}</td>
                         <td>${escapeHtml(product.serialNumber || '-')}</td>
                         <td>${escapeHtml(product.brand || '-')}</td>
                         <td>${escapeHtml(product.supplier || '-')}</td>
-                        <td>${currency(product.costPrice)}</td>
-                        <td>${currency(product.salePrice)}</td>
+                        <td>${currency(product.costPrice || 0)}</td>
+                        <td>${currency(product.salePrice || 0)}</td>
                         <td>${product.quantity ?? 0}</td>
-                        <td><span class="tag ${product.status === 'ativo' ? 'success' : 'warning'}">${product.status || 'ativo'}</span></td>
+                        <td><span class="tag ${product.status === 'ativo' ? 'success' : 'warning'}">${escapeHtml(product.status || 'ativo')}</span></td>
                         <td>${renderActionButtons(product)}</td>
                       </tr>
                     `).join('') || '<tr><td colspan="9">Nenhum produto cadastrado.</td></tr>'}
@@ -678,7 +728,7 @@ export function createProductsModule(ctx) {
                 <span class="muted">Histórico e rastreabilidade</span>
               </div>
 
-              <div class="search-row" style="margin-bottom:14px; flex-wrap:wrap;">
+              <div class="search-row" style="margin-bottom:14px;">
                 <input id="movement-filter-product" placeholder="Produto" value="${escapeHtml(movementFilters.product)}" />
                 <select id="movement-filter-type">
                   <option value="">Todos os tipos</option>

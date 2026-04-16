@@ -1626,3 +1626,107 @@ body.theme-light .nav-item.active {
     padding: 0 12px;
   }
 }
+
+#tab-clients,
+#tab-clients * {
+  min-width: 0;
+}
+
+#tab-clients .users-layout,
+#tab-clients .section-stack,
+#tab-clients .table-card,
+#tab-clients .panel,
+#tab-clients .card {
+  max-width: 100%;
+}
+
+#tab-clients .table-wrap {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+#tab-clients .table-wrap table {
+  min-width: 560px;
+}
+
+#tab-clients .clean-table-actions,
+#tab-clients .inline-row,
+#tab-clients .form-actions,
+#tab-clients .search-row {
+  min-width: 0;
+}
+
+#tab-clients .clean-table-actions > *,
+#tab-clients .inline-row > *,
+#tab-clients .form-actions > *,
+#tab-clients .search-row > * {
+  min-width: 0;
+}
+
+#tab-clients .empty-state,
+#tab-clients .list-item,
+#tab-clients .compact-card,
+#tab-clients .summary-box {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+@media (max-width: 920px) {
+  #tab-clients .users-layout {
+    grid-template-columns: 1fr !important;
+  }
+
+  #tab-clients .search-row,
+  #tab-clients .clean-table-actions,
+  #tab-clients .inline-row,
+  #tab-clients .form-actions {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    width: 100% !important;
+    gap: 10px;
+  }
+
+  #tab-clients .search-row > *,
+  #tab-clients .clean-table-actions > *,
+  #tab-clients .inline-row > *,
+  #tab-clients .form-actions > * {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  #tab-clients .table-wrap {
+    overflow-x: auto;
+  }
+
+  #tab-clients .table-wrap table {
+    min-width: 520px;
+  }
+
+  #tab-clients #accounts-module-host {
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
+  }
+
+  #tab-clients #accounts-module-host .table-wrap {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+}
+
+@media (max-width: 640px) {
+  #tab-clients .panel,
+  #tab-clients .card,
+  #tab-clients .table-card {
+    padding: 12px;
+  }
+
+  #tab-clients .table-wrap table {
+    min-width: 480px;
+  }
+}

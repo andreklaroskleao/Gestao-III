@@ -198,7 +198,6 @@ export function createSettingsModule(ctx) {
   function bindEvents() {
     tabEls.settings.querySelector('#settings-form').addEventListener('submit', handleSettingsSubmit);
     tabEls.settings.querySelector('#password-form').addEventListener('submit', handlePasswordSubmit);
-
     bindAuditFilters();
     bindBackupEvents();
     bindExcelEvents();
@@ -215,11 +214,9 @@ export function createSettingsModule(ctx) {
 
     const overdueCount = accounts.filter((item) => {
       if (!item.dueDate || Number(item.openAmount || 0) <= 0) return false;
-
       const due = new Date(`${item.dueDate}T00:00:00`);
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-
       return due < today;
     }).length;
 
@@ -231,23 +228,20 @@ export function createSettingsModule(ctx) {
 
     return `
       <div class="cards-grid" style="margin-top:18px;">
-        <div class="card">
-          <h3>Contas em aberto</h3>
+        <div class="metric-card">
+          <span>Contas em aberto</span>
           <strong>${totalOpen.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</strong>
         </div>
-
-        <div class="card">
-          <h3>Total já recebido</h3>
+        <div class="metric-card">
+          <span>Total já recebido</span>
           <strong>${totalReceived.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</strong>
         </div>
-
-        <div class="card">
-          <h3>Contas vencidas</h3>
+        <div class="metric-card">
+          <span>Contas vencidas</span>
           <strong>${overdueCount}</strong>
         </div>
-
-        <div class="card">
-          <h3>Último fechamento</h3>
+        <div class="metric-card">
+          <span>Último fechamento</span>
           <strong>${latestCash ? (latestCash.closingAmount || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : 'R$ 0,00'}</strong>
         </div>
       </div>
@@ -264,7 +258,8 @@ export function createSettingsModule(ctx) {
       <div class="settings-layout">
         <div class="panel">
           <div class="section-header">
-            <h2>Configurações gerais</h2>
+            <h2>Geral</h2>
+            <span class="muted">Ajustes principais do sistema</span>
           </div>
 
           <form id="settings-form" class="settings-grid">
@@ -298,7 +293,7 @@ export function createSettingsModule(ctx) {
             </label>
             <label>Texto de garantia<textarea name="warrantyText">${escapeHtml(state.settings.warrantyText || '')}</textarea></label>
 
-            <div class="form-actions">
+            <div class="form-actions" style="grid-column:1 / -1;">
               <button class="btn btn-primary" type="submit">Salvar configurações</button>
               <button class="btn btn-secondary" type="button" id="thermal-test-print-btn">Teste térmico</button>
             </div>
@@ -308,18 +303,20 @@ export function createSettingsModule(ctx) {
         <div class="panel">
           <div class="section-header">
             <h2>Segurança</h2>
+            <span class="muted">Troca de senha da sessão atual</span>
           </div>
 
           <form id="password-form" class="settings-grid">
             <label>Senha atual<input name="currentPassword" type="password" required /></label>
             <label>Nova senha<input name="newPassword" type="password" required /></label>
-            <div class="form-actions">
+            <div class="form-actions" style="grid-column:1 / -1;">
               <button class="btn btn-secondary" type="submit">Trocar senha</button>
             </div>
           </form>
 
-          <div class="auth-hint" style="margin-top:16px;">
-            Usuários inativos não conseguem entrar, mesmo com senha correta. As permissões são conferidas tanto na interface quanto nas regras do Firestore.
+          <div class="card" style="margin-top:14px; padding:14px;">
+            <strong style="display:block; margin-bottom:6px;">Observação</strong>
+            <span class="muted">Usuários inativos não conseguem entrar. As permissões são conferidas tanto na interface quanto nas regras do Firestore.</span>
           </div>
         </div>
       </div>
@@ -328,34 +325,42 @@ export function createSettingsModule(ctx) {
 
       <div class="cards-grid" style="margin-top:18px;">
         <div class="card">
-          <h3>Backup JSON</h3>
-          <p class="muted">Exporte todos os dados do sistema em JSON.</p>
-          <div class="form-actions" style="margin-top:12px;">
+          <div class="section-header">
+            <h3>Backup JSON</h3>
+          </div>
+          <p class="muted">Exportar a base em JSON.</p>
+          <div class="form-actions">
             <button class="btn btn-secondary" type="button" id="backup-export-btn">Exportar backup</button>
           </div>
         </div>
 
         <div class="card">
-          <h3>Importação JSON</h3>
-          <p class="muted">Importe um backup JSON para restaurar dados.</p>
-          <input id="backup-import-file" type="file" accept=".json,application/json" style="margin-top:12px;" />
+          <div class="section-header">
+            <h3>Importação JSON</h3>
+          </div>
+          <p class="muted">Restaurar dados por arquivo JSON.</p>
+          <input id="backup-import-file" type="file" accept=".json,application/json" />
           <div class="form-actions" style="margin-top:12px;">
             <button class="btn btn-secondary" type="button" id="backup-import-btn">Importar backup</button>
           </div>
         </div>
 
         <div class="card">
-          <h3>Exportação Excel</h3>
-          <p class="muted">Baixe todas as planilhas em um único arquivo Excel.</p>
-          <div class="form-actions" style="margin-top:12px;">
+          <div class="section-header">
+            <h3>Exportação Excel</h3>
+          </div>
+          <p class="muted">Exportar planilhas em um único arquivo.</p>
+          <div class="form-actions">
             <button class="btn btn-secondary" type="button" id="excel-export-btn">Exportar Excel</button>
           </div>
         </div>
 
         <div class="card">
-          <h3>Importação Excel</h3>
-          <p class="muted">Importe planilhas de produtos, clientes e contas a receber.</p>
-          <input id="excel-import-file" type="file" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" style="margin-top:12px;" />
+          <div class="section-header">
+            <h3>Importação Excel</h3>
+          </div>
+          <p class="muted">Importar produtos, clientes e contas.</p>
+          <input id="excel-import-file" type="file" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" />
           <div class="form-actions" style="margin-top:12px;">
             <button class="btn btn-secondary" type="button" id="excel-import-btn">Importar Excel</button>
           </div>
@@ -369,7 +374,8 @@ export function createSettingsModule(ctx) {
 
       <div class="table-card" style="margin-top:18px;">
         <div class="section-header">
-          <h2>Auditoria do sistema</h2>
+          <h2>Auditoria</h2>
+          <span class="muted">Filtro refinado dos eventos do sistema</span>
         </div>
 
         <div class="search-row" style="margin-bottom:14px; flex-wrap:wrap;">

@@ -573,36 +573,11 @@ export function createSalesModule(ctx) {
     });
   }
 
-  function bindHistoryEvents() {
-    const customerInput = tabEls.sales.querySelector('#sales-filter-customer');
-    const paymentInput = tabEls.sales.querySelector('#sales-filter-payment');
-    const dateFromInput = tabEls.sales.querySelector('#sales-filter-date-from');
-    const dateToInput = tabEls.sales.querySelector('#sales-filter-date-to');
+  function showSaleDetailsById(saleId) {
+    const sale = (state.sales || []).find((item) => item.id === saleId);
+    if (!sale) return;
 
-    tabEls.sales.querySelector('#sales-filter-apply')?.addEventListener('click', () => {
-      saleFilters.customer = customerInput.value || '';
-      saleFilters.paymentMethod = paymentInput.value || '';
-      saleFilters.dateFrom = dateFromInput.value || '';
-      saleFilters.dateTo = dateToInput.value || '';
-      render();
-    });
-
-    tabEls.sales.querySelector('#sales-filter-clear')?.addEventListener('click', () => {
-      saleFilters = {
-        customer: '',
-        paymentMethod: '',
-        dateFrom: '',
-        dateTo: ''
-      };
-      render();
-    });
-
-    tabEls.sales.querySelectorAll('[data-sale-view]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const sale = (state.sales || []).find((item) => item.id === btn.dataset.saleView);
-        if (!sale) return;
-
-        const details = `
+    const details = `
 Cliente: ${sale.customerName || 'Balcão'}
 Pagamento: ${sale.paymentMethod || '-'}
 Subtotal: ${currency(sale.subtotal)}
@@ -613,19 +588,131 @@ Troco: ${currency(sale.change)}
 
 Itens:
 ${(sale.items || []).map((item) => `- ${item.name} | Qtd: ${item.quantity} | Unit: ${currency(item.unitPrice)} | Total: ${currency(item.total)}`).join('\n')}
-        `.trim();
+    `.trim();
 
-        alert(details);
-      });
+    alert(details);
+  }
+
+  function reprintSaleById(saleId) {
+    const sale = (state.sales || []).find((item) => item.id === saleId);
+    if (!sale) return;
+    printReceipt(sale);
+  }
+
+  function renderHistoryModalContent() {
+    const filteredSales = getFilteredSales();
+    const host = document.getElementById('sales-history-modal-host');
+    if (!host) return;
+
+    host.innerHTML = `
+      <div class="search-row" style="margin-bottom:14px;">
+        <input id="sales-filter-customer-modal" placeholder="Cliente" value="${escapeHtml(saleFilters.customer)}" />
+        <select id="sales-filter-payment-modal">
+          <option value="">Todas as formas</option>
+          ${paymentMethods.map((item) => `<option value="${item}" ${saleFilters.paymentMethod === item ? 'selected' : ''}>${item}</option>`).join('')}
+        </select>
+        <input id="sales-filter-date-from-modal" type="date" value="${saleFilters.dateFrom}" />
+        <input id="sales-filter-date-to-modal" type="date" value="${saleFilters.dateTo}" />
+        <button class="btn btn-secondary" type="button" id="sales-filter-apply-modal">Filtrar</button>
+        <button class="btn btn-secondary" type="button" id="sales-filter-clear-modal">Limpar</button>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>Cliente</th>
+              <th>Total</th>
+              <th>Pagamento</th>
+              <th>Itens</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${filteredSales.slice(0, 100).map((sale) => `
+              <tr>
+                <td>${formatDateTime(sale.createdAt)}</td>
+                <td>${escapeHtml(sale.customerName || 'Balcão')}</td>
+                <td>${currency(sale.total)}</td>
+                <td>${escapeHtml(sale.paymentMethod || '-')}</td>
+                <td>${sale.items?.length || 0}</td>
+                <td>
+                  <div class="clean-table-actions">
+                    <button class="btn btn-secondary" type="button" data-sale-view-modal="${sale.id}">Detalhes</button>
+                    <button class="btn btn-primary" type="button" data-sale-reprint-modal="${sale.id}">Reimprimir</button>
+                  </div>
+                </td>
+              </tr>
+            `).join('') || '<tr><td colspan="6">Nenhuma venda registrada.</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    `;
+
+    bindHistoryModalEvents();
+  }
+
+  function bindHistoryModalEvents() {
+    document.getElementById('sales-filter-apply-modal')?.addEventListener('click', () => {
+      saleFilters.customer = document.getElementById('sales-filter-customer-modal')?.value || '';
+      saleFilters.paymentMethod = document.getElementById('sales-filter-payment-modal')?.value || '';
+      saleFilters.dateFrom = document.getElementById('sales-filter-date-from-modal')?.value || '';
+      saleFilters.dateTo = document.getElementById('sales-filter-date-to-modal')?.value || '';
+      renderHistoryModalContent();
     });
 
-    tabEls.sales.querySelectorAll('[data-sale-reprint]').forEach((btn) => {
+    document.getElementById('sales-filter-clear-modal')?.addEventListener('click', () => {
+      saleFilters = {
+        customer: '',
+        paymentMethod: '',
+        dateFrom: '',
+        dateTo: ''
+      };
+      renderHistoryModalContent();
+    });
+
+    document.querySelectorAll('[data-sale-view-modal]').forEach((btn) => {
       btn.addEventListener('click', () => {
-        const sale = (state.sales || []).find((item) => item.id === btn.dataset.saleReprint);
-        if (!sale) return;
-        printReceipt(sale);
+        showSaleDetailsById(btn.dataset.saleViewModal);
       });
     });
+
+    document.querySelectorAll('[data-sale-reprint-modal]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        reprintSaleById(btn.dataset.saleReprintModal);
+      });
+    });
+  }
+
+  function openHistoryModal() {
+    const modalRoot = document.getElementById('modal-root');
+    if (!modalRoot) return;
+
+    modalRoot.innerHTML = `
+      <div class="modal-backdrop" id="sales-history-modal-backdrop">
+        <div class="modal-card" style="width:min(100%, 1100px);">
+          <div class="section-header">
+            <h2>Histórico de vendas</h2>
+            <button class="btn btn-secondary" type="button" id="sales-history-modal-close">Fechar</button>
+          </div>
+          <div id="sales-history-modal-host"></div>
+        </div>
+      </div>
+    `;
+
+    const closeModal = () => {
+      modalRoot.innerHTML = '';
+    };
+
+    modalRoot.querySelector('#sales-history-modal-close').addEventListener('click', closeModal);
+    modalRoot.querySelector('#sales-history-modal-backdrop').addEventListener('click', (event) => {
+      if (event.target.id === 'sales-history-modal-backdrop') {
+        closeModal();
+      }
+    });
+
+    renderHistoryModalContent();
   }
 
   function bindKeyboardShortcuts() {
@@ -683,7 +770,6 @@ ${(sale.items || []).map((item) => `- ${item.name} | Qtd: ${item.quantity} | Uni
   function render() {
     const cartTotal = calculateCartTotal();
     const mobile = isMobileDevice();
-    const filteredSales = getFilteredSales();
 
     tabEls.sales.innerHTML = `
       <div class="section-stack">
@@ -728,58 +814,11 @@ ${(sale.items || []).map((item) => `- ${item.name} | Qtd: ${item.quantity} | Uni
                   : 'No computador, toque no ícone para focar o campo e use a leitora USB.'}
               </div>
 
+              <div class="form-actions" style="margin-top:12px;">
+                <button id="open-sales-history-btn" class="btn btn-secondary" type="button">Histórico de vendas</button>
+              </div>
+
               <div id="sale-search-results" class="stack-list slim-list" style="margin-top:14px;"></div>
-            </div>
-
-            <div class="table-card">
-              <div class="section-header">
-                <h2>Histórico de vendas</h2>
-                <span class="muted">${filteredSales.length} resultado(s)</span>
-              </div>
-
-              <div class="search-row" style="margin-bottom:14px;">
-                <input id="sales-filter-customer" placeholder="Cliente" value="${escapeHtml(saleFilters.customer)}" />
-                <select id="sales-filter-payment">
-                  <option value="">Todas as formas</option>
-                  ${paymentMethods.map((item) => `<option value="${item}" ${saleFilters.paymentMethod === item ? 'selected' : ''}>${item}</option>`).join('')}
-                </select>
-                <input id="sales-filter-date-from" type="date" value="${saleFilters.dateFrom}" />
-                <input id="sales-filter-date-to" type="date" value="${saleFilters.dateTo}" />
-                <button class="btn btn-secondary" type="button" id="sales-filter-apply">Filtrar</button>
-                <button class="btn btn-secondary" type="button" id="sales-filter-clear">Limpar</button>
-              </div>
-
-              <div class="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Data</th>
-                      <th>Cliente</th>
-                      <th>Total</th>
-                      <th>Pagamento</th>
-                      <th>Itens</th>
-                      <th>Ações</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    ${filteredSales.slice(0, 50).map((sale) => `
-                      <tr>
-                        <td>${formatDateTime(sale.createdAt)}</td>
-                        <td>${escapeHtml(sale.customerName || 'Balcão')}</td>
-                        <td>${currency(sale.total)}</td>
-                        <td>${escapeHtml(sale.paymentMethod || '-')}</td>
-                        <td>${sale.items?.length || 0}</td>
-                        <td>
-                          <div class="clean-table-actions">
-                            <button class="btn btn-secondary" type="button" data-sale-view="${sale.id}">Detalhes</button>
-                            <button class="btn btn-primary" type="button" data-sale-reprint="${sale.id}">Reimprimir</button>
-                          </div>
-                        </td>
-                      </tr>
-                    `).join('') || '<tr><td colspan="6">Nenhuma venda registrada.</td></tr>'}
-                  </tbody>
-                </table>
-              </div>
             </div>
           </div>
 
@@ -834,6 +873,7 @@ ${(sale.items || []).map((item) => `- ${item.name} | Qtd: ${item.quantity} | Uni
     const searchInput = tabEls.sales.querySelector('#sale-product-search');
 
     tabEls.sales.querySelector('#sale-product-search-btn').addEventListener('click', handleSaleSearch);
+    tabEls.sales.querySelector('#open-sales-history-btn').addEventListener('click', openHistoryModal);
     searchInput.addEventListener('keydown', handleSalesSearchInputKeydown);
     searchInput.addEventListener('input', handleSalesSearchInputAutoScan);
     tabEls.sales.querySelector('#sale-form').addEventListener('submit', handleSaleSubmit);
@@ -884,7 +924,6 @@ ${(sale.items || []).map((item) => `- ${item.name} | Qtd: ${item.quantity} | Uni
     });
 
     bindCartButtons();
-    bindHistoryEvents();
     bindKeyboardShortcuts();
 
     const discountField = tabEls.sales.querySelector('input[name="discount"]');

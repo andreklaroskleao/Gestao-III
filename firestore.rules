@@ -1,4 +1,5 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -7,7 +8,9 @@ service cloud.firestore {
     }
 
     function userDoc() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+      return signedIn()
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid))
+        : null;
     }
 
     function userExists() {
@@ -15,51 +18,60 @@ service cloud.firestore {
     }
 
     function userData() {
-      return userDoc().data;
+      return userExists() ? userDoc().data : null;
     }
 
     function isActiveUser() {
       return userExists()
-        && userData().active == true
-        && userData().deleted != true;
+        && userData().deleted != true
+        && userData().active == true;
     }
 
     function isMaster() {
-      return isActiveUser() && userData().accessLevel == "master";
+      return isActiveUser()
+        && userData().accessLevel == 'master';
     }
 
     function isAdmin() {
       return isActiveUser()
-        && (userData().accessLevel == "master" || userData().accessLevel == "admin");
-    }
-
-    function isManager() {
-      return isActiveUser()
         && (
-          userData().accessLevel == "master" ||
-          userData().accessLevel == "admin" ||
-          userData().accessLevel == "manager"
+          userData().accessLevel == 'master' ||
+          userData().role == 'Administrador'
         );
     }
 
-    function hasArea(area) {
+    function hasPermission(area) {
       return isActiveUser()
         && (
-          userData().accessLevel == "master" ||
-          userData().accessLevel == "admin" ||
-          (userData().permissions is list && area in userData().permissions)
+          isMaster()
+          || (userData().permissions is list && area in userData().permissions)
         );
     }
 
-    function isSelf(userId) {
+    function sameUser(userId) {
       return signedIn() && request.auth.uid == userId;
     }
 
-    function unchanged(field) {
-      return resource == null || request.resource.data[field] == resource.data[field];
+    function canReadOwnUser(userId) {
+      return isActiveUser() && sameUser(userId);
     }
 
-    function validUserWrite() {
+    function canManageUsers() {
+      return isAdmin() || hasPermission('users');
+    }
+
+    function validUserCreateData() {
+      return request.resource.data.fullName is string
+        && request.resource.data.username is string
+        && request.resource.data.email is string
+        && request.resource.data.role is string
+        && request.resource.data.accessLevel is string
+        && request.resource.data.permissions is list
+        && request.resource.data.active is bool
+        && request.resource.data.deleted is bool;
+    }
+
+    function validUserUpdateData() {
       return request.resource.data.fullName is string
         && request.resource.data.username is string
         && request.resource.data.email is string
@@ -71,120 +83,104 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow read: if isAdmin() || (isSelf(userId) && isActiveUser());
+      allow read: if canReadOwnUser(userId) || canManageUsers();
 
-      allow create: if isAdmin()
-        && validUserWrite();
+      allow create: if canManageUsers()
+        && validUserCreateData();
 
       allow update: if (
-          isAdmin()
-          || (
-            isSelf(userId)
-            && isActiveUser()
-            && request.resource.data.fullName == resource.data.fullName
-            && request.resource.data.username == resource.data.username
-            && request.resource.data.email == resource.data.email
-            && request.resource.data.role == resource.data.role
-            && request.resource.data.accessLevel == resource.data.accessLevel
-            && request.resource.data.permissions == resource.data.permissions
-            && request.resource.data.active == resource.data.active
-            && request.resource.data.deleted == resource.data.deleted
-          )
-        )
-        && validUserWrite();
+          canManageUsers() && validUserUpdateData()
+        ) || (
+          canReadOwnUser(userId)
+          && request.resource.data.diff(resource.data).changedKeys().hasOnly(['fullName', 'username', 'email', 'updatedAt'])
+          && request.resource.data.active == resource.data.active
+          && request.resource.data.deleted == resource.data.deleted
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.accessLevel == resource.data.accessLevel
+          && request.resource.data.permissions == resource.data.permissions
+        );
 
-      allow delete: if isMaster();
-    }
-
-    match /products/{docId} {
-      allow read: if hasArea("products") || hasArea("sales") || hasArea("reports");
-      allow create: if hasArea("products");
-      allow update: if hasArea("products");
-      allow delete: if isAdmin();
-    }
-
-    match /sales/{docId} {
-      allow read: if hasArea("sales") || hasArea("reports") || hasArea("dashboard");
-      allow create: if hasArea("sales");
-      allow update: if hasArea("sales");
-      allow delete: if isAdmin();
-    }
-
-    match /deliveries/{docId} {
-      allow read: if hasArea("deliveries") || hasArea("dashboard");
-      allow create: if hasArea("deliveries");
-      allow update: if hasArea("deliveries");
-      allow delete: if isAdmin();
-    }
-
-    match /clients/{docId} {
-      allow read: if hasArea("clients") || hasArea("sales") || hasArea("deliveries");
-      allow create: if hasArea("clients") || hasArea("sales") || hasArea("deliveries");
-      allow update: if hasArea("clients") || hasArea("sales") || hasArea("deliveries");
-      allow delete: if isAdmin();
-    }
-
-    match /suppliers/{docId} {
-      allow read: if hasArea("suppliers") || hasArea("products") || hasArea("purchases") || hasArea("payables");
-      allow create: if hasArea("suppliers");
-      allow update: if hasArea("suppliers");
-      allow delete: if isAdmin();
-    }
-
-    match /purchase_orders/{docId} {
-      allow read: if hasArea("purchases") || hasArea("payables") || hasArea("dashboard");
-      allow create: if hasArea("purchases");
-      allow update: if hasArea("purchases");
-      allow delete: if isAdmin();
-    }
-
-    match /purchases/{docId} {
-      allow read: if hasArea("purchases") || hasArea("payables") || hasArea("dashboard");
-      allow create: if hasArea("purchases");
-      allow update: if hasArea("purchases");
-      allow delete: if isAdmin();
-    }
-
-    match /accounts_payable/{docId} {
-      allow read: if hasArea("payables") || hasArea("purchases") || hasArea("dashboard");
-      allow create: if hasArea("payables") || hasArea("purchases");
-      allow update: if hasArea("payables") || hasArea("purchases");
-      allow delete: if isAdmin();
-    }
-
-    match /accounts_receivable/{docId} {
-      allow read: if hasArea("clients") || hasArea("sales") || hasArea("dashboard");
-      allow create: if hasArea("clients") || hasArea("sales");
-      allow update: if hasArea("clients") || hasArea("sales");
-      allow delete: if isAdmin();
-    }
-
-    match /inventory_movements/{docId} {
-      allow read: if hasArea("products") || hasArea("reports");
-      allow create: if hasArea("products") || hasArea("purchases");
-      allow update: if false;
-      allow delete: if isAdmin();
-    }
-
-    match /cash_sessions/{docId} {
-      allow read: if hasArea("settings") || hasArea("dashboard") || hasArea("sales");
-      allow create: if hasArea("settings") || hasArea("sales");
-      allow update: if hasArea("settings") || hasArea("sales");
-      allow delete: if isAdmin();
-    }
-
-    match /audit_logs/{docId} {
-      allow read: if hasArea("settings") || isAdmin();
-      allow create: if isActiveUser();
-      allow update: if false;
-      allow delete: if isMaster();
+      allow delete: if false;
     }
 
     match /settings/{docId} {
       allow read: if isActiveUser();
-      allow create: if hasArea("settings") || isAdmin();
-      allow update: if hasArea("settings") || isAdmin();
+      allow create, update: if hasPermission('settings') || isAdmin();
       allow delete: if isMaster();
+    }
+
+    match /products/{docId} {
+      allow read: if hasPermission('products') || hasPermission('sales');
+      allow create, update: if hasPermission('products');
+      allow delete: if isAdmin();
+    }
+
+    match /sales/{docId} {
+      allow read: if hasPermission('sales') || hasPermission('reports');
+      allow create: if hasPermission('sales');
+      allow update: if hasPermission('sales') || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /deliveries/{docId} {
+      allow read: if hasPermission('deliveries');
+      allow create, update: if hasPermission('deliveries');
+      allow delete: if isAdmin();
+    }
+
+    match /clients/{docId} {
+      allow read: if hasPermission('clients') || hasPermission('sales') || hasPermission('deliveries');
+      allow create, update: if hasPermission('clients');
+      allow delete: if isAdmin();
+    }
+
+    match /suppliers/{docId} {
+      allow read: if hasPermission('suppliers') || hasPermission('products') || hasPermission('purchases') || hasPermission('payables');
+      allow create, update: if hasPermission('suppliers');
+      allow delete: if isAdmin();
+    }
+
+    match /inventory_movements/{docId} {
+      allow read: if hasPermission('products') || hasPermission('reports');
+      allow create: if hasPermission('products') || hasPermission('purchases');
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
+    match /audit_logs/{docId} {
+      allow read: if hasPermission('settings') || isAdmin();
+      allow create: if isActiveUser();
+      allow update, delete: if false;
+    }
+
+    match /cash_sessions/{docId} {
+      allow read: if hasPermission('settings') || hasPermission('reports') || isAdmin();
+      allow create, update: if hasPermission('settings') || isAdmin();
+      allow delete: if isMaster();
+    }
+
+    match /accounts_receivable/{docId} {
+      allow read: if hasPermission('clients') || hasPermission('reports') || isAdmin();
+      allow create, update: if hasPermission('clients') || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /accounts_payable/{docId} {
+      allow read: if hasPermission('payables') || hasPermission('purchases') || hasPermission('reports') || isAdmin();
+      allow create, update: if hasPermission('payables') || hasPermission('purchases') || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /purchase_orders/{docId} {
+      allow read: if hasPermission('purchases') || isAdmin();
+      allow create, update: if hasPermission('purchases') || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /purchases/{docId} {
+      allow read: if hasPermission('purchases') || hasPermission('reports') || isAdmin();
+      allow create, update: if hasPermission('purchases') || isAdmin();
+      allow delete: if isAdmin();
     }
 
     match /{document=**} {

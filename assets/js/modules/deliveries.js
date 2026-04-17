@@ -1,4 +1,4 @@
-import { escapeHtml, showToast } from './ui.js';
+import { escapeHtml, showToast, bindSubmitGuard, bindAsyncButton } from './ui.js';
 
 export function createDeliveriesModule(ctx) {
   const {
@@ -22,6 +22,8 @@ export function createDeliveriesModule(ctx) {
     phone: '',
     period: ''
   };
+
+  let isSavingDelivery = false;
 
   function getEditingDelivery() {
     return (state.deliveries || []).find((item) => item.id === state.editingDeliveryId) || null;
@@ -119,10 +121,7 @@ export function createDeliveriesModule(ctx) {
     const clientIdInput = form.querySelector('#delivery-client-id');
     const clientSelectedInput = form.querySelector('#delivery-client-selected');
 
-    if (clientIdInput) {
-      clientIdInput.value = delivery?.clientId || '';
-    }
-
+    if (clientIdInput) clientIdInput.value = delivery?.clientId || '';
     if (clientSelectedInput) {
       clientSelectedInput.value = delivery?.clientId
         ? `${delivery.customerName || ''}${delivery.phone ? ` - ${delivery.phone}` : ''}`
@@ -137,36 +136,41 @@ export function createDeliveriesModule(ctx) {
     return 'warning';
   }
 
-  async function handleDeliverySubmit(event) {
-    event.preventDefault();
+  async function saveDelivery() {
+    if (isSavingDelivery) return;
+    isSavingDelivery = true;
 
-    const form = event.currentTarget;
-    const payload = Object.fromEntries(new FormData(form).entries());
+    try {
+      const form = tabEls.deliveries.querySelector('#delivery-form');
+      const payload = Object.fromEntries(new FormData(form).entries());
 
-    payload.totalAmount = toNumber(payload.totalAmount);
-    payload.scheduledAt = payload.scheduledDate
-      ? timestampFromDateTime(payload.scheduledDate, payload.scheduledTime || '00:00')
-      : null;
+      payload.totalAmount = toNumber(payload.totalAmount);
+      payload.scheduledAt = payload.scheduledDate
+        ? timestampFromDateTime(payload.scheduledDate, payload.scheduledTime || '00:00')
+        : null;
 
-    const selectedClientId = form.querySelector('#delivery-client-id')?.value || '';
-    payload.clientId = selectedClientId || '';
-    payload.scheduledDate = payload.scheduledDate || '';
-    payload.scheduledTime = payload.scheduledTime || '';
-    payload.deleted = false;
+      const selectedClientId = form.querySelector('#delivery-client-id')?.value || '';
+      payload.clientId = selectedClientId || '';
+      payload.scheduledDate = payload.scheduledDate || '';
+      payload.scheduledTime = payload.scheduledTime || '';
+      payload.deleted = false;
 
-    delete payload.customerSearch;
+      delete payload.customerSearch;
 
-    if (state.editingDeliveryId) {
-      await updateByPath('deliveries', state.editingDeliveryId, payload);
-      state.editingDeliveryId = null;
-      showToast('Entrega atualizada.', 'success');
-    } else {
-      await createDoc(refs.deliveries, payload);
-      showToast('Entrega agendada.', 'success');
+      if (state.editingDeliveryId) {
+        await updateByPath('deliveries', state.editingDeliveryId, payload);
+        state.editingDeliveryId = null;
+        showToast('Entrega atualizada.', 'success');
+      } else {
+        await createDoc(refs.deliveries, payload);
+        showToast('Entrega agendada.', 'success');
+      }
+
+      form.reset();
+      render();
+    } finally {
+      isSavingDelivery = false;
     }
-
-    form.reset();
-    render();
   }
 
   async function updateDeliveryStatus(deliveryId, nextStatus) {
@@ -207,50 +211,23 @@ export function createDeliveriesModule(ctx) {
 
   function renderDeliveryActions(item) {
     const status = String(item.status || '');
-
     let primaryAction = '';
 
     if (status === 'Agendado' || status === 'Reagendado') {
       primaryAction = `
-        <button
-          class="icon-action-btn info"
-          type="button"
-          data-delivery-status="${item.id}:Em rota"
-          title="Iniciar"
-          aria-label="Iniciar"
-        >▶️</button>
+        <button class="icon-action-btn info" type="button" data-delivery-status="${item.id}:Em rota" title="Iniciar" aria-label="Iniciar">▶️</button>
       `;
     } else if (status === 'Em rota') {
       primaryAction = `
-        <button
-          class="icon-action-btn success"
-          type="button"
-          data-delivery-status="${item.id}:Concluído"
-          title="Concluir"
-          aria-label="Concluir"
-        >✅</button>
+        <button class="icon-action-btn success" type="button" data-delivery-status="${item.id}:Concluído" title="Concluir" aria-label="Concluir">✅</button>
       `;
     }
 
     return `
       <div class="actions-inline-compact">
         ${primaryAction}
-
-        <button
-          class="icon-action-btn"
-          type="button"
-          data-delivery-edit="${item.id}"
-          title="Editar"
-          aria-label="Editar"
-        >✏️</button>
-
-        <button
-          class="icon-action-btn"
-          type="button"
-          data-delivery-more="${item.id}"
-          title="Mais ações"
-          aria-label="Mais ações"
-        >⋯</button>
+        <button class="icon-action-btn" type="button" data-delivery-edit="${item.id}" title="Editar" aria-label="Editar">✏️</button>
+        <button class="icon-action-btn" type="button" data-delivery-more="${item.id}" title="Mais ações" aria-label="Mais ações">⋯</button>
       </div>
     `;
   }
@@ -264,10 +241,10 @@ export function createDeliveriesModule(ctx) {
     });
 
     tabEls.deliveries.querySelectorAll('[data-delivery-status]').forEach((btn) => {
-      btn.addEventListener('click', async () => {
+      bindAsyncButton(btn, async () => {
         const [id, nextStatus] = btn.dataset.deliveryStatus.split(':');
         await updateDeliveryStatus(id, nextStatus);
-      });
+      }, { busyLabel: '...' });
     });
 
     tabEls.deliveries.querySelectorAll('[data-delivery-more]').forEach((btn) => {
@@ -286,7 +263,7 @@ export function createDeliveriesModule(ctx) {
       render();
     });
 
-    tabEls.deliveries.querySelector('#delivery-filter-clear')?.addEventListener('click', () => {
+    bindAsyncButton(tabEls.deliveries.querySelector('#delivery-filter-clear'), async () => {
       filters = {
         status: '',
         customer: '',
@@ -294,7 +271,7 @@ export function createDeliveriesModule(ctx) {
         period: ''
       };
       render();
-    });
+    }, { busyLabel: 'Limpando...' });
   }
 
   function bindClientPicker() {
@@ -344,29 +321,23 @@ export function createDeliveriesModule(ctx) {
       });
     });
 
-    clearBtn?.addEventListener('click', () => {
+    bindAsyncButton(clearBtn, async () => {
       const form = tabEls.deliveries.querySelector('#delivery-form');
       if (!form) return;
 
       form.querySelector('#delivery-client-id').value = '';
       form.querySelector('#delivery-client-selected').value = '';
-    });
-  }
-
-  function bindFormActions() {
-    const form = tabEls.deliveries.querySelector('#delivery-form');
-    if (!form) return;
-
-    form.addEventListener('submit', handleDeliverySubmit);
-
-    tabEls.deliveries.querySelector('#delivery-reset-btn')?.addEventListener('click', () => {
-      state.editingDeliveryId = null;
-      render();
-    });
+    }, { busyLabel: 'Limpando...' });
   }
 
   function bindEvents() {
-    bindFormActions();
+    bindSubmitGuard(tabEls.deliveries.querySelector('#delivery-form'), saveDelivery, { busyLabel: 'Salvando...' });
+
+    bindAsyncButton(tabEls.deliveries.querySelector('#delivery-reset-btn'), async () => {
+      state.editingDeliveryId = null;
+      render();
+    }, { busyLabel: 'Limpando...' });
+
     bindFilterActions();
     bindClientPicker();
     bindTableActions();
@@ -380,22 +351,10 @@ export function createDeliveriesModule(ctx) {
     tabEls.deliveries.innerHTML = `
       <div class="section-stack">
         <div class="cards-grid">
-          <div class="metric-card">
-            <span>Hoje</span>
-            <strong>${summary.todayCount}</strong>
-          </div>
-          <div class="metric-card">
-            <span>Pendentes</span>
-            <strong>${summary.pendingCount}</strong>
-          </div>
-          <div class="metric-card">
-            <span>Concluídos</span>
-            <strong>${summary.completedCount}</strong>
-          </div>
-          <div class="metric-card">
-            <span>Total em entregas</span>
-            <strong>${currency(summary.totalValue)}</strong>
-          </div>
+          <div class="metric-card"><span>Hoje</span><strong>${summary.todayCount}</strong></div>
+          <div class="metric-card"><span>Pendentes</span><strong>${summary.pendingCount}</strong></div>
+          <div class="metric-card"><span>Concluídos</span><strong>${summary.completedCount}</strong></div>
+          <div class="metric-card"><span>Total em entregas</span><strong>${currency(summary.totalValue)}</strong></div>
         </div>
 
         <div class="deliveries-layout">
@@ -538,20 +497,9 @@ export function createDeliveriesModule(ctx) {
               </div>
 
               <div class="cards-grid" style="grid-template-columns:1fr; gap:12px;">
-                <div class="compact-card">
-                  <span class="muted">Pendentes</span>
-                  <strong>${summary.pendingCount}</strong>
-                </div>
-
-                <div class="compact-card">
-                  <span class="muted">Concluídos</span>
-                  <strong>${summary.completedCount}</strong>
-                </div>
-
-                <div class="compact-card">
-                  <span class="muted">Hoje</span>
-                  <strong>${summary.todayCount}</strong>
-                </div>
+                <div class="compact-card"><span class="muted">Pendentes</span><strong>${summary.pendingCount}</strong></div>
+                <div class="compact-card"><span class="muted">Concluídos</span><strong>${summary.completedCount}</strong></div>
+                <div class="compact-card"><span class="muted">Hoje</span><strong>${summary.todayCount}</strong></div>
               </div>
             </div>
           </div>

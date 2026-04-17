@@ -1,4 +1,4 @@
-import { escapeHtml } from './ui.js';
+import { escapeHtml, bindSubmitGuard, bindAsyncButton } from './ui.js';
 
 export function createSettingsModule(ctx) {
   const {
@@ -31,10 +31,9 @@ export function createSettingsModule(ctx) {
 
   let shouldShowAuditLogs = false;
 
-  async function handleSettingsSubmit(event) {
-    event.preventDefault();
-
-    const payload = Object.fromEntries(new FormData(event.currentTarget).entries());
+  async function saveSettings() {
+    const form = tabEls.settings.querySelector('#settings-form');
+    const payload = Object.fromEntries(new FormData(form).entries());
 
     payload.lowStockThreshold = Number(payload.lowStockThreshold || 5);
     payload.thermalCompactMode = payload.thermalCompactMode === 'true';
@@ -79,10 +78,10 @@ export function createSettingsModule(ctx) {
     alert('Configurações salvas com sucesso.');
   }
 
-  async function handlePasswordSubmit(event) {
-    event.preventDefault();
+  async function savePassword() {
+    const form = tabEls.settings.querySelector('#password-form');
+    const formData = new FormData(form);
 
-    const formData = new FormData(event.currentTarget);
     const currentPassword = String(formData.get('currentPassword') || '');
     const newPassword = String(formData.get('newPassword') || '');
 
@@ -97,7 +96,7 @@ export function createSettingsModule(ctx) {
       description: 'Senha do usuário alterada.'
     });
 
-    event.currentTarget.reset();
+    form.reset();
     alert('Senha atualizada com sucesso.');
   }
 
@@ -132,11 +131,11 @@ export function createSettingsModule(ctx) {
   }
 
   function bindBackupEvents() {
-    tabEls.settings.querySelector('#backup-export-btn')?.addEventListener('click', () => {
+    bindAsyncButton(tabEls.settings.querySelector('#backup-export-btn'), async () => {
       backupModule.downloadBackup();
-    });
+    }, { busyLabel: 'Exportando...' });
 
-    tabEls.settings.querySelector('#backup-import-btn')?.addEventListener('click', async () => {
+    bindAsyncButton(tabEls.settings.querySelector('#backup-import-btn'), async () => {
       if (!canImportBackup(state.currentUser)) {
         alert('Somente o usuário master pode importar backup.');
         return;
@@ -150,21 +149,17 @@ export function createSettingsModule(ctx) {
         return;
       }
 
-      try {
-        await backupModule.importBackupFile(file);
-        input.value = '';
-      } catch (error) {
-        alert(error.message || 'Erro ao importar backup.');
-      }
-    });
+      await backupModule.importBackupFile(file);
+      input.value = '';
+    }, { busyLabel: 'Importando...' });
   }
 
   function bindExcelEvents() {
-    tabEls.settings.querySelector('#excel-export-btn')?.addEventListener('click', () => {
+    bindAsyncButton(tabEls.settings.querySelector('#excel-export-btn'), async () => {
       excelModule.exportAllExcel();
-    });
+    }, { busyLabel: 'Exportando...' });
 
-    tabEls.settings.querySelector('#excel-import-btn')?.addEventListener('click', async () => {
+    bindAsyncButton(tabEls.settings.querySelector('#excel-import-btn'), async () => {
       if (!canImportBackup(state.currentUser)) {
         alert('Somente o usuário master pode importar Excel.');
         return;
@@ -178,17 +173,13 @@ export function createSettingsModule(ctx) {
         return;
       }
 
-      try {
-        await excelModule.importExcelFile(file);
-        input.value = '';
-      } catch (error) {
-        alert(error.message || 'Erro ao importar Excel.');
-      }
-    });
+      await excelModule.importExcelFile(file);
+      input.value = '';
+    }, { busyLabel: 'Importando...' });
   }
 
   function bindPrintEvents() {
-    tabEls.settings.querySelector('#thermal-test-print-btn')?.addEventListener('click', () => {
+    bindAsyncButton(tabEls.settings.querySelector('#thermal-test-print-btn'), async () => {
       printModule.printSaleReceipt({
         customerName: 'Cliente teste',
         paymentMethod: 'Dinheiro',
@@ -202,12 +193,12 @@ export function createSettingsModule(ctx) {
           { productId: '2', name: 'Produto teste 2', quantity: 1, unitPrice: 30, total: 30 }
         ]
       });
-    });
+    }, { busyLabel: 'Abrindo...' });
   }
 
   function bindEvents() {
-    tabEls.settings.querySelector('#settings-form')?.addEventListener('submit', handleSettingsSubmit);
-    tabEls.settings.querySelector('#password-form')?.addEventListener('submit', handlePasswordSubmit);
+    bindSubmitGuard(tabEls.settings.querySelector('#settings-form'), saveSettings, { busyLabel: 'Salvando...' });
+    bindSubmitGuard(tabEls.settings.querySelector('#password-form'), savePassword, { busyLabel: 'Atualizando...' });
 
     bindAuditFilters();
     bindBackupEvents();
@@ -428,7 +419,7 @@ export function createSettingsModule(ctx) {
             <button class="btn btn-secondary" type="button" id="audit-filter-clear">Limpar</button>
           </div>
 
-          ${auditModule.renderAuditTable(auditFilters, shouldShowAuditLogs)}
+          ${auditModule.renderAuditTable(auditFilters, shouldShowAuditLogs, 40)}
         </div>
       </div>
     `;

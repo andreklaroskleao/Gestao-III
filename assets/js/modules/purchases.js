@@ -1,4 +1,4 @@
-import { escapeHtml, renderBlocked, showToast } from './ui.js';
+import { escapeHtml, renderBlocked, showToast, bindSubmitGuard, bindAsyncButton } from './ui.js';
 
 export function createPurchasesModule(ctx) {
   const {
@@ -21,6 +21,8 @@ export function createPurchasesModule(ctx) {
     dateFrom: '',
     dateTo: ''
   };
+
+  let isSavingPurchase = false;
 
   function getRows() {
     return state.purchases || [];
@@ -45,9 +47,7 @@ export function createPurchasesModule(ctx) {
     if (typeof value === 'string') {
       if (value.includes('T')) {
         const dt = new Date(value);
-        if (!Number.isNaN(dt.getTime())) {
-          return formatDateKey(dt);
-        }
+        if (!Number.isNaN(dt.getTime())) return formatDateKey(dt);
       }
       return value.slice(0, 10);
     }
@@ -129,16 +129,17 @@ export function createPurchasesModule(ctx) {
     });
   }
 
-  async function handleSubmit(event) {
-    event.preventDefault();
-
-    const form = event.currentTarget;
-    const payload = Object.fromEntries(new FormData(form).entries());
-
-    payload.totalAmount = toNumber(payload.totalAmount);
-    payload.deleted = false;
+  async function savePurchase() {
+    if (isSavingPurchase) return;
+    isSavingPurchase = true;
 
     try {
+      const form = tabEls.purchases.querySelector('#purchase-form');
+      const payload = Object.fromEntries(new FormData(form).entries());
+
+      payload.totalAmount = toNumber(payload.totalAmount);
+      payload.deleted = false;
+
       if (state.editingPurchaseId) {
         const current = getEditingPurchase();
 
@@ -172,9 +173,8 @@ export function createPurchasesModule(ctx) {
 
       form.reset();
       render();
-    } catch (error) {
-      console.error(error);
-      alert(error.message || 'Erro ao salvar compra.');
+    } finally {
+      isSavingPurchase = false;
     }
   }
 
@@ -187,37 +187,34 @@ export function createPurchasesModule(ctx) {
       return;
     }
 
-    try {
-      await updateByPath('purchases', purchaseId, {
-        status: 'Recebida'
-      });
+    await updateByPath('purchases', purchaseId, {
+      status: 'Recebida'
+    });
 
-      await inventoryModule.createSimpleMovement?.({
+    if (inventoryModule.createSimpleMovement) {
+      await inventoryModule.createSimpleMovement({
         type: 'entrada',
         reason: `Recebimento de compra: ${row.description || row.documentNumber || row.id}`,
         quantity: 0
       });
-
-      await auditModule.log({
-        module: 'purchases',
-        action: 'receive',
-        entityType: 'purchase',
-        entityId: purchaseId,
-        entityLabel: row.description || '',
-        description: 'Compra marcada como recebida.'
-      });
-
-      await ensurePayableForPurchase({
-        ...row,
-        id: purchaseId,
-        status: 'Recebida'
-      });
-
-      showToast('Compra recebida.', 'success');
-    } catch (error) {
-      console.error(error);
-      alert(error.message || 'Erro ao receber compra.');
     }
+
+    await auditModule.log({
+      module: 'purchases',
+      action: 'receive',
+      entityType: 'purchase',
+      entityId: purchaseId,
+      entityLabel: row.description || '',
+      description: 'Compra marcada como recebida.'
+    });
+
+    await ensurePayableForPurchase({
+      ...row,
+      id: purchaseId,
+      status: 'Recebida'
+    });
+
+    showToast('Compra recebida.', 'success');
   }
 
   function openDetailsModal(purchaseId) {
@@ -236,48 +233,22 @@ export function createPurchasesModule(ctx) {
           </div>
 
           <div class="sale-details-grid">
-            <div class="sale-details-box">
-              <span>Fornecedor</span>
-              <strong>${escapeHtml(row.supplierName || '-')}</strong>
-            </div>
-            <div class="sale-details-box">
-              <span>Status</span>
-              <strong>${escapeHtml(row.status || '-')}</strong>
-            </div>
-            <div class="sale-details-box">
-              <span>Data</span>
-              <strong>${escapeHtml(row.receivedDate || normalizeDate(row.receivedAt) || '-')}</strong>
-            </div>
-            <div class="sale-details-box">
-              <span>Total</span>
-              <strong>${currency(row.totalAmount || 0)}</strong>
-            </div>
-            <div class="sale-details-box">
-              <span>Condição</span>
-              <strong>${escapeHtml(row.paymentCondition || '-')}</strong>
-            </div>
-            <div class="sale-details-box">
-              <span>Documento</span>
-              <strong>${escapeHtml(row.documentNumber || '-')}</strong>
-            </div>
+            <div class="sale-details-box"><span>Fornecedor</span><strong>${escapeHtml(row.supplierName || '-')}</strong></div>
+            <div class="sale-details-box"><span>Status</span><strong>${escapeHtml(row.status || '-')}</strong></div>
+            <div class="sale-details-box"><span>Data</span><strong>${escapeHtml(row.receivedDate || normalizeDate(row.receivedAt) || '-')}</strong></div>
+            <div class="sale-details-box"><span>Total</span><strong>${currency(row.totalAmount || 0)}</strong></div>
+            <div class="sale-details-box"><span>Condição</span><strong>${escapeHtml(row.paymentCondition || '-')}</strong></div>
+            <div class="sale-details-box"><span>Documento</span><strong>${escapeHtml(row.documentNumber || '-')}</strong></div>
           </div>
 
           <div class="table-card" style="padding:14px;">
-            <div class="section-header">
-              <h3>Descrição</h3>
-            </div>
-            <div class="empty-state" style="padding:14px;">
-              ${escapeHtml(row.description || '-')}
-            </div>
+            <div class="section-header"><h3>Descrição</h3></div>
+            <div class="empty-state" style="padding:14px;">${escapeHtml(row.description || '-')}</div>
           </div>
 
           <div class="table-card" style="padding:14px; margin-top:14px;">
-            <div class="section-header">
-              <h3>Observações</h3>
-            </div>
-            <div class="empty-state" style="padding:14px;">
-              ${escapeHtml(row.notes || '-')}
-            </div>
+            <div class="section-header"><h3>Observações</h3></div>
+            <div class="empty-state" style="padding:14px;">${escapeHtml(row.notes || '-')}</div>
           </div>
         </div>
       </div>
@@ -289,9 +260,7 @@ export function createPurchasesModule(ctx) {
 
     modalRoot.querySelector('#purchase-details-modal-close').addEventListener('click', closeModal);
     modalRoot.querySelector('#purchase-details-modal-backdrop').addEventListener('click', (event) => {
-      if (event.target.id === 'purchase-details-modal-backdrop') {
-        closeModal();
-      }
+      if (event.target.id === 'purchase-details-modal-backdrop') closeModal();
     });
   }
 
@@ -311,42 +280,20 @@ export function createPurchasesModule(ctx) {
   function renderPurchaseActions(row) {
     return `
       <div class="actions-inline-compact">
-        <button
-          class="icon-action-btn success"
-          type="button"
-          data-purchase-receive="${row.id}"
-          title="Receber"
-          aria-label="Receber"
-        >📥</button>
-
-        <button
-          class="icon-action-btn info"
-          type="button"
-          data-purchase-view="${row.id}"
-          title="Detalhes"
-          aria-label="Detalhes"
-        >👁️</button>
-
-        <button
-          class="icon-action-btn"
-          type="button"
-          data-purchase-more="${row.id}"
-          title="Mais ações"
-          aria-label="Mais ações"
-        >⋯</button>
+        <button class="icon-action-btn success" type="button" data-purchase-receive="${row.id}" title="Receber" aria-label="Receber">📥</button>
+        <button class="icon-action-btn info" type="button" data-purchase-view="${row.id}" title="Detalhes" aria-label="Detalhes">👁️</button>
+        <button class="icon-action-btn" type="button" data-purchase-more="${row.id}" title="Mais ações" aria-label="Mais ações">⋯</button>
       </div>
     `;
   }
 
   function bindEvents() {
-    const form = tabEls.purchases.querySelector('#purchase-form');
-    form.addEventListener('submit', handleSubmit);
+    bindSubmitGuard(tabEls.purchases.querySelector('#purchase-form'), savePurchase, { busyLabel: 'Salvando...' });
 
-    tabEls.purchases.querySelector('#purchase-reset-btn')?.addEventListener('click', () => {
+    bindAsyncButton(tabEls.purchases.querySelector('#purchase-reset-btn'), async () => {
       state.editingPurchaseId = null;
-      form.reset();
       render();
-    });
+    }, { busyLabel: 'Limpando...' });
 
     tabEls.purchases.querySelector('#purchase-filter-apply')?.addEventListener('click', () => {
       filters.supplier = tabEls.purchases.querySelector('#purchase-filter-supplier')?.value || '';
@@ -356,7 +303,7 @@ export function createPurchasesModule(ctx) {
       render();
     });
 
-    tabEls.purchases.querySelector('#purchase-filter-clear')?.addEventListener('click', () => {
+    bindAsyncButton(tabEls.purchases.querySelector('#purchase-filter-clear'), async () => {
       filters = {
         supplier: '',
         status: '',
@@ -364,12 +311,12 @@ export function createPurchasesModule(ctx) {
         dateTo: ''
       };
       render();
-    });
+    }, { busyLabel: 'Limpando...' });
 
     tabEls.purchases.querySelectorAll('[data-purchase-receive]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        receivePurchase(btn.dataset.purchaseReceive);
-      });
+      bindAsyncButton(btn, async () => {
+        await receivePurchase(btn.dataset.purchaseReceive);
+      }, { busyLabel: '...' });
     });
 
     tabEls.purchases.querySelectorAll('[data-purchase-view]').forEach((btn) => {
@@ -398,22 +345,10 @@ export function createPurchasesModule(ctx) {
     tabEls.purchases.innerHTML = `
       <div class="section-stack">
         <div class="cards-grid">
-          <div class="metric-card">
-            <span>Total de compras</span>
-            <strong>${summary.total}</strong>
-          </div>
-          <div class="metric-card">
-            <span>Recebidas</span>
-            <strong>${summary.received}</strong>
-          </div>
-          <div class="metric-card">
-            <span>Pendentes</span>
-            <strong>${summary.pending}</strong>
-          </div>
-          <div class="metric-card">
-            <span>Valor total</span>
-            <strong>${currency(summary.totalValue)}</strong>
-          </div>
+          <div class="metric-card"><span>Total de compras</span><strong>${summary.total}</strong></div>
+          <div class="metric-card"><span>Recebidas</span><strong>${summary.received}</strong></div>
+          <div class="metric-card"><span>Pendentes</span><strong>${summary.pending}</strong></div>
+          <div class="metric-card"><span>Valor total</span><strong>${currency(summary.totalValue)}</strong></div>
         </div>
 
         <div class="users-layout">
@@ -503,21 +438,14 @@ export function createPurchasesModule(ctx) {
               </div>
 
               <div class="search-row" style="margin-bottom:14px;">
-                <input
-                  id="purchase-filter-supplier"
-                  placeholder="Fornecedor"
-                  value="${escapeHtml(filters.supplier)}"
-                />
-
+                <input id="purchase-filter-supplier" placeholder="Fornecedor" value="${escapeHtml(filters.supplier)}" />
                 <select id="purchase-filter-status">
                   <option value="">Todos os status</option>
                   <option value="Pendente" ${filters.status === 'Pendente' ? 'selected' : ''}>Pendente</option>
                   <option value="Recebida" ${filters.status === 'Recebida' ? 'selected' : ''}>Recebida</option>
                 </select>
-
                 <input id="purchase-filter-date-from" type="date" value="${filters.dateFrom}" />
                 <input id="purchase-filter-date-to" type="date" value="${filters.dateTo}" />
-
                 <button class="btn btn-secondary" type="button" id="purchase-filter-apply">Filtrar</button>
                 <button class="btn btn-secondary" type="button" id="purchase-filter-clear">Limpar</button>
               </div>
@@ -559,20 +487,9 @@ export function createPurchasesModule(ctx) {
               </div>
 
               <div class="cards-grid" style="grid-template-columns:1fr; gap:12px;">
-                <div class="compact-card">
-                  <span class="muted">Recebidas</span>
-                  <strong>${summary.received}</strong>
-                </div>
-
-                <div class="compact-card">
-                  <span class="muted">Pendentes</span>
-                  <strong>${summary.pending}</strong>
-                </div>
-
-                <div class="compact-card">
-                  <span class="muted">Valor total</span>
-                  <strong>${currency(summary.totalValue)}</strong>
-                </div>
+                <div class="compact-card"><span class="muted">Recebidas</span><strong>${summary.received}</strong></div>
+                <div class="compact-card"><span class="muted">Pendentes</span><strong>${summary.pending}</strong></div>
+                <div class="compact-card"><span class="muted">Valor total</span><strong>${currency(summary.totalValue)}</strong></div>
               </div>
             </div>
           </div>

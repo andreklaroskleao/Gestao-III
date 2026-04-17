@@ -1,7 +1,7 @@
 import { orderBy } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js';
 
 import { initTheme, setTheme, getPreferredTheme } from './modules/theme.js';
-import { renderBlocked, showToast } from './modules/ui.js';
+import { renderBlocked, showToast, bindAsyncButton, debounce } from './modules/ui.js';
 import { createPwaModule } from './modules/pwa.js';
 import { createDashboardModule } from './modules/dashboard.js';
 import { createProductsModule } from './modules/products.js';
@@ -74,7 +74,9 @@ const els = {
   stockAlertList: document.getElementById('stock-alert-list'),
   alertsPanel: document.getElementById('alerts-panel'),
   sidebarToggle: document.getElementById('sidebar-toggle'),
-  mobileSidebarToggle: document.getElementById('mobile-sidebar-toggle')
+  mobileSidebarToggle: document.getElementById('mobile-sidebar-toggle'),
+  globalSearchInput: document.getElementById('global-search-input'),
+  globalSearchBtn: document.getElementById('global-search-btn')
 };
 
 const tabEls = {
@@ -623,6 +625,12 @@ function resetAppState() {
     }
   });
 
+  const modalRoot = document.getElementById('modal-root');
+  if (modalRoot) modalRoot.innerHTML = '';
+
+  const searchInput = els.globalSearchInput;
+  if (searchInput) searchInput.value = '';
+
   els.currentUserName.textContent = 'Usuário';
   els.pageTitle.textContent = 'Dashboard';
   els.pageSubtitle.textContent = 'Área: Dashboard.';
@@ -816,11 +824,151 @@ function openActionsSheet(title, actions = []) {
   });
 }
 
+function buildGlobalSearchIndex() {
+  const entries = [];
+
+  state.products.forEach((item) => {
+    entries.push({
+      type: 'product',
+      label: item.name || 'Produto',
+      subtitle: `${item.barcode || 'Sem código'} · ${item.brand || 'Sem marca'}`,
+      tab: 'products',
+      search: [item.name, item.barcode, item.brand, item.supplier].join(' ').toLowerCase()
+    });
+  });
+
+  state.clients.forEach((item) => {
+    entries.push({
+      type: 'client',
+      label: item.name || 'Cliente',
+      subtitle: `${item.phone || 'Sem telefone'} · ${item.email || 'Sem e-mail'}`,
+      tab: 'clients',
+      search: [item.name, item.phone, item.email, item.address].join(' ').toLowerCase()
+    });
+  });
+
+  state.suppliers.forEach((item) => {
+    entries.push({
+      type: 'supplier',
+      label: item.name || 'Fornecedor',
+      subtitle: `${item.phone || 'Sem telefone'} · ${item.email || 'Sem e-mail'}`,
+      tab: 'suppliers',
+      search: [item.name, item.contactName, item.phone, item.email, item.document].join(' ').toLowerCase()
+    });
+  });
+
+  state.sales.slice(0, 100).forEach((item) => {
+    entries.push({
+      type: 'sale',
+      label: item.customerName || 'Venda balcão',
+      subtitle: `${currency(item.total || 0)} · ${formatDateTime(item.createdAt)}`,
+      tab: 'sales',
+      search: [item.customerName, item.paymentMethod, item.cashierName].join(' ').toLowerCase()
+    });
+  });
+
+  state.deliveries.forEach((item) => {
+    entries.push({
+      type: 'delivery',
+      label: item.customerName || 'Entrega',
+      subtitle: `${item.phone || 'Sem telefone'} · ${item.status || 'Sem status'}`,
+      tab: 'deliveries',
+      search: [item.customerName, item.phone, item.address, item.status].join(' ').toLowerCase()
+    });
+  });
+
+  state.accountsPayable.forEach((item) => {
+    entries.push({
+      type: 'payable',
+      label: item.description || 'Conta a pagar',
+      subtitle: `${item.supplierName || 'Fornecedor'} · ${currency(item.openAmount || 0)}`,
+      tab: 'payables',
+      search: [item.description, item.supplierName, item.documentNumber].join(' ').toLowerCase()
+    });
+  });
+
+  state.purchases.forEach((item) => {
+    entries.push({
+      type: 'purchase',
+      label: item.description || 'Compra',
+      subtitle: `${item.supplierName || 'Fornecedor'} · ${currency(item.totalAmount || 0)}`,
+      tab: 'purchases',
+      search: [item.description, item.supplierName, item.documentNumber].join(' ').toLowerCase()
+    });
+  });
+
+  return entries;
+}
+
+function performGlobalSearch(rawTerm) {
+  const term = String(rawTerm || '').trim().toLowerCase();
+
+  if (!term) {
+    showToast('Digite algo para pesquisar.', 'info');
+    return;
+  }
+
+  const results = buildGlobalSearchIndex()
+    .filter((item) => item.search.includes(term))
+    .slice(0, 12);
+
+  const modalRoot = document.getElementById('modal-root');
+  if (!modalRoot) return;
+
+  modalRoot.innerHTML = `
+    <div class="modal-backdrop" id="global-search-modal-backdrop">
+      <div class="modal-card">
+        <div class="section-header">
+          <h2>Busca global</h2>
+          <button class="btn btn-secondary" type="button" id="global-search-modal-close">Fechar</button>
+        </div>
+
+        <div class="auth-hint" style="margin-bottom:12px;">
+          Resultados para: "${rawTerm}"
+        </div>
+
+        <div class="stack-list">
+          ${results.map((item) => `
+            <button class="list-item search-result-item" type="button" data-search-go-tab="${item.tab}">
+              <strong>${item.label}</strong>
+              <span>${item.subtitle}</span>
+            </button>
+          `).join('') || '<div class="empty-state">Nenhum resultado encontrado.</div>'}
+        </div>
+      </div>
+    </div>
+  `;
+
+  const closeModal = () => {
+    modalRoot.innerHTML = '';
+  };
+
+  modalRoot.querySelector('#global-search-modal-close')?.addEventListener('click', closeModal);
+  modalRoot.querySelector('#global-search-modal-backdrop')?.addEventListener('click', (event) => {
+    if (event.target.id === 'global-search-modal-backdrop') {
+      closeModal();
+    }
+  });
+
+  modalRoot.querySelectorAll('[data-search-go-tab]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const tab = btn.dataset.searchGoTab;
+      closeModal();
+
+      if (hasPermission(state.currentUser, tab)) {
+        activateTab(tab);
+      } else {
+        showToast('Você não possui acesso a essa área.', 'error');
+      }
+    });
+  });
+}
+
 window.openActionsSheet = openActionsSheet;
 window.closeActionsSheet = closeActionsSheet;
 
 els.loginForm.addEventListener('submit', handleLogin);
-els.logoutBtn.addEventListener('click', handleLogout);
+bindAsyncButton(els.logoutBtn, handleLogout, { busyLabel: 'Saindo...' });
 
 els.nav.addEventListener('click', (event) => {
   const btn = event.target.closest('[data-tab]');
@@ -858,6 +1006,30 @@ document.addEventListener('click', (event) => {
 
   if (!clickedInsideSidebar && !clickedToggle) {
     document.body.classList.remove('sidebar-open');
+  }
+});
+
+const debouncedGlobalSearch = debounce(() => {
+  const term = els.globalSearchInput?.value || '';
+  if (term.trim().length >= 2) {
+    performGlobalSearch(term);
+  }
+}, 220);
+
+els.globalSearchBtn?.addEventListener('click', () => {
+  performGlobalSearch(els.globalSearchInput?.value || '');
+});
+
+els.globalSearchInput?.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') {
+    event.preventDefault();
+    performGlobalSearch(event.currentTarget.value || '');
+  }
+});
+
+els.globalSearchInput?.addEventListener('input', () => {
+  if ((els.globalSearchInput?.value || '').trim().length >= 3) {
+    debouncedGlobalSearch();
   }
 });
 

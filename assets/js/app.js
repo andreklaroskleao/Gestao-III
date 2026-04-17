@@ -373,6 +373,7 @@ const clientsTabModule = createClientsTabModule({
 const pwaModule = createPwaModule();
 pwaModule.registerServiceWorker();
 pwaModule.bindInstallPrompt();
+pwaModule.bindOnlineOfflineFeedback();
 
 function setScreen(isAuthenticated) {
   els.loginScreen.classList.toggle('active', !isAuthenticated);
@@ -628,8 +629,7 @@ function resetAppState() {
   const modalRoot = document.getElementById('modal-root');
   if (modalRoot) modalRoot.innerHTML = '';
 
-  const searchInput = els.globalSearchInput;
-  if (searchInput) searchInput.value = '';
+  if (els.globalSearchInput) els.globalSearchInput.value = '';
 
   els.currentUserName.textContent = 'Usuário';
   els.pageTitle.textContent = 'Dashboard';

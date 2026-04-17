@@ -1,4 +1,4 @@
-import { escapeHtml, showToast } from './ui.js';
+import { escapeHtml, showToast, bindSubmitGuard, bindAsyncButton } from './ui.js';
 
 export function createSalesModule(ctx) {
   const {
@@ -29,6 +29,7 @@ export function createSalesModule(ctx) {
   };
 
   let keyboardBound = false;
+  let isFinishingSale = false;
 
   function isMobileDevice() {
     return /Android|iPhone|iPad|iPod|Mobile|Windows Phone|Opera Mini/i.test(navigator.userAgent)
@@ -53,10 +54,7 @@ export function createSalesModule(ctx) {
     const discountInput = tabEls.sales?.querySelector('input[name="discount"]');
     const paidInput = tabEls.sales?.querySelector('input[name="amountPaid"]');
 
-    const subtotal = state.cart.reduce((sum, item) => {
-      return sum + (Number(item.salePrice) * Number(item.quantity));
-    }, 0);
-
+    const subtotal = state.cart.reduce((sum, item) => sum + (Number(item.salePrice) * Number(item.quantity)), 0);
     const discount = toNumber(discountInput?.value || 0);
     const total = Math.max(0, subtotal - discount);
     const amountPaid = toNumber(paidInput?.value || 0);
@@ -171,10 +169,8 @@ export function createSalesModule(ctx) {
     const resultsEl = tabEls.sales.querySelector('#sale-search-results');
 
     const results = (state.products || [])
-      .filter((product) => {
-        return product.status !== 'inativo'
-          && [product.name, product.barcode, product.brand, product.supplier].join(' ').toLowerCase().includes(term);
-      })
+      .filter((product) => product.status !== 'inativo'
+        && [product.name, product.barcode, product.brand, product.supplier].join(' ').toLowerCase().includes(term))
       .slice(0, 8);
 
     resultsEl.innerHTML = results.map((product) => `
@@ -509,65 +505,70 @@ export function createSalesModule(ctx) {
     });
   }
 
-  async function handleSaleSubmit(event) {
-    event?.preventDefault?.();
+  async function finishSale() {
+    if (isFinishingSale) return;
+    isFinishingSale = true;
 
-    if (!state.cart.length) {
-      alert('Adicione ao menos um produto na venda.');
-      return;
-    }
+    try {
+      if (!state.cart.length) {
+        alert('Adicione ao menos um produto na venda.');
+        return;
+      }
 
-    const form = tabEls.sales.querySelector('#sale-form');
-    const values = Object.fromEntries(new FormData(form).entries());
-    const totals = calculateCartTotal();
+      const form = tabEls.sales.querySelector('#sale-form');
+      const values = Object.fromEntries(new FormData(form).entries());
+      const totals = calculateCartTotal();
 
-    const insufficient = state.cart.find((item) => {
-      const product = (state.products || []).find((row) => row.id === item.id);
-      return !product || Number(product.quantity) < Number(item.quantity);
-    });
-
-    if (insufficient) {
-      alert(`Estoque insuficiente para ${insufficient.name}.`);
-      return;
-    }
-
-    const selectedClientId = tabEls.sales.querySelector('#sale-client-id')?.value || '';
-
-    const payload = {
-      clientId: selectedClientId || '',
-      customerName: values.customerName || '',
-      paymentMethod: values.paymentMethod,
-      discount: totals.discount,
-      subtotal: totals.subtotal,
-      total: totals.total,
-      amountPaid: totals.amountPaid,
-      change: totals.change,
-      cashierId: state.currentUser.uid,
-      cashierName: state.currentUser.fullName,
-      items: state.cart.map((item) => ({
-        productId: item.id,
-        name: item.name,
-        quantity: Number(item.quantity || 0),
-        unitPrice: Number(item.salePrice || 0),
-        total: Number(item.salePrice || 0) * Number(item.quantity || 0)
-      }))
-    };
-
-    await createDoc(refs.sales, payload);
-
-    for (const item of state.cart) {
-      const product = (state.products || []).find((row) => row.id === item.id);
-
-      await updateByPath('products', item.id, {
-        quantity: Number(product.quantity) - Number(item.quantity)
+      const insufficient = state.cart.find((item) => {
+        const product = (state.products || []).find((row) => row.id === item.id);
+        return !product || Number(product.quantity) < Number(item.quantity);
       });
-    }
 
-    printReceipt(payload);
-    state.cart = [];
-    form.reset();
-    render();
-    showToast('Venda finalizada com sucesso.', 'success');
+      if (insufficient) {
+        alert(`Estoque insuficiente para ${insufficient.name}.`);
+        return;
+      }
+
+      const selectedClientId = tabEls.sales.querySelector('#sale-client-id')?.value || '';
+
+      const payload = {
+        clientId: selectedClientId || '',
+        customerName: values.customerName || '',
+        paymentMethod: values.paymentMethod,
+        discount: totals.discount,
+        subtotal: totals.subtotal,
+        total: totals.total,
+        amountPaid: totals.amountPaid,
+        change: totals.change,
+        cashierId: state.currentUser.uid,
+        cashierName: state.currentUser.fullName,
+        items: state.cart.map((item) => ({
+          productId: item.id,
+          name: item.name,
+          quantity: Number(item.quantity || 0),
+          unitPrice: Number(item.salePrice || 0),
+          total: Number(item.salePrice || 0) * Number(item.quantity || 0)
+        }))
+      };
+
+      await createDoc(refs.sales, payload);
+
+      for (const item of state.cart) {
+        const product = (state.products || []).find((row) => row.id === item.id);
+
+        await updateByPath('products', item.id, {
+          quantity: Number(product.quantity) - Number(item.quantity)
+        });
+      }
+
+      printReceipt(payload);
+      state.cart = [];
+      form.reset();
+      render();
+      showToast('Venda finalizada com sucesso.', 'success');
+    } finally {
+      isFinishingSale = false;
+    }
   }
 
   function printReceipt(sale) {
@@ -684,9 +685,10 @@ export function createSalesModule(ctx) {
     };
 
     modalRoot.querySelector('#sale-details-modal-close').addEventListener('click', closeModal);
-    modalRoot.querySelector('#sale-details-reprint-btn').addEventListener('click', () => {
+    bindAsyncButton(modalRoot.querySelector('#sale-details-reprint-btn'), async () => {
       printReceipt(sale);
-    });
+    }, { busyLabel: 'Abrindo...' });
+
     modalRoot.querySelector('#sale-details-modal-backdrop').addEventListener('click', (event) => {
       if (event.target.id === 'sale-details-modal-backdrop') {
         closeModal();
@@ -726,9 +728,9 @@ export function createSalesModule(ctx) {
     });
 
     document.querySelectorAll('[data-sale-reprint-modal]').forEach((btn) => {
-      btn.addEventListener('click', () => {
+      bindAsyncButton(btn, async () => {
         reprintSaleById(btn.dataset.saleReprintModal);
-      });
+      }, { busyLabel: 'Abrindo...' });
     });
   }
 
@@ -739,32 +741,13 @@ export function createSalesModule(ctx) {
 
     host.innerHTML = `
       <div class="sales-history-filters">
-        <input
-          id="sales-filter-customer-modal"
-          class="field-span-2"
-          placeholder="Cliente"
-          value="${escapeHtml(saleFilters.customer)}"
-        />
-
+        <input id="sales-filter-customer-modal" class="field-span-2" placeholder="Cliente" value="${escapeHtml(saleFilters.customer)}" />
         <select id="sales-filter-payment-modal" class="field-span-1">
           <option value="">Todas as formas</option>
           ${paymentMethods.map((item) => `<option value="${item}" ${saleFilters.paymentMethod === item ? 'selected' : ''}>${item}</option>`).join('')}
         </select>
-
-        <input
-          id="sales-filter-date-from-modal"
-          class="field-span-1"
-          type="date"
-          value="${saleFilters.dateFrom}"
-        />
-
-        <input
-          id="sales-filter-date-to-modal"
-          class="field-span-1"
-          type="date"
-          value="${saleFilters.dateTo}"
-        />
-
+        <input id="sales-filter-date-from-modal" class="field-span-1" type="date" value="${saleFilters.dateFrom}" />
+        <input id="sales-filter-date-to-modal" class="field-span-1" type="date" value="${saleFilters.dateTo}" />
         <button class="btn btn-secondary field-span-1" type="button" id="sales-filter-apply-modal">Filtrar</button>
         <button class="btn btn-secondary field-span-1" type="button" id="sales-filter-clear-modal">Limpar</button>
       </div>
@@ -792,21 +775,8 @@ export function createSalesModule(ctx) {
                   <td>${sale.items?.length || 0}</td>
                   <td>
                     <div class="actions-inline-compact">
-                      <button
-                        class="icon-action-btn"
-                        type="button"
-                        data-sale-view-modal="${sale.id}"
-                        title="Detalhes"
-                        aria-label="Detalhes"
-                      >👁️</button>
-
-                      <button
-                        class="icon-action-btn info"
-                        type="button"
-                        data-sale-reprint-modal="${sale.id}"
-                        title="Reimprimir"
-                        aria-label="Reimprimir"
-                      >🖨️</button>
+                      <button class="icon-action-btn" type="button" data-sale-view-modal="${sale.id}" title="Detalhes" aria-label="Detalhes">👁️</button>
+                      <button class="icon-action-btn info" type="button" data-sale-reprint-modal="${sale.id}" title="Reimprimir" aria-label="Reimprimir">🖨️</button>
                     </div>
                   </td>
                 </tr>
@@ -827,21 +797,8 @@ export function createSalesModule(ctx) {
               <span><strong>Itens:</strong> ${sale.items?.length || 0}</span>
             </div>
             <div class="actions-inline-compact">
-              <button
-                class="icon-action-btn"
-                type="button"
-                data-sale-view-modal="${sale.id}"
-                title="Detalhes"
-                aria-label="Detalhes"
-              >👁️</button>
-
-              <button
-                class="icon-action-btn info"
-                type="button"
-                data-sale-reprint-modal="${sale.id}"
-                title="Reimprimir"
-                aria-label="Reimprimir"
-              >🖨️</button>
+              <button class="icon-action-btn" type="button" data-sale-view-modal="${sale.id}" title="Detalhes" aria-label="Detalhes">👁️</button>
+              <button class="icon-action-btn info" type="button" data-sale-reprint-modal="${sale.id}" title="Reimprimir" aria-label="Reimprimir">🖨️</button>
             </div>
           </div>
         `).join('') || '<div class="empty-state">Nenhuma venda registrada.</div>'}
@@ -905,7 +862,10 @@ export function createSalesModule(ctx) {
 
       if (event.key === 'F9') {
         event.preventDefault();
-        await handleSaleSubmit();
+        const form = tabEls.sales.querySelector('#sale-form');
+        if (form) {
+          form.requestSubmit();
+        }
         return;
       }
 
@@ -924,13 +884,7 @@ export function createSalesModule(ctx) {
 
   function renderBarcodeActionButton() {
     return `
-      <button
-        class="icon-btn"
-        id="camera-scan-btn"
-        type="button"
-        title="Ler código de barras"
-        aria-label="Ler código de barras"
-      >
+      <button class="icon-btn" id="camera-scan-btn" type="button" title="Ler código de barras" aria-label="Ler código de barras">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M4 7v10"></path>
           <path d="M7 7v10"></path>
@@ -950,22 +904,10 @@ export function createSalesModule(ctx) {
     tabEls.sales.innerHTML = `
       <div class="section-stack">
         <div class="cards-grid">
-          <div class="metric-card">
-            <span>Itens no carrinho</span>
-            <strong id="sale-items-count">${state.cart.length}</strong>
-          </div>
-          <div class="metric-card">
-            <span>Subtotal</span>
-            <strong>${currency(cartTotal.subtotal)}</strong>
-          </div>
-          <div class="metric-card">
-            <span>Total atual</span>
-            <strong>${currency(cartTotal.total)}</strong>
-          </div>
-          <div class="metric-card">
-            <span>Troco</span>
-            <strong>${currency(cartTotal.change)}</strong>
-          </div>
+          <div class="metric-card"><span>Itens no carrinho</span><strong id="sale-items-count">${state.cart.length}</strong></div>
+          <div class="metric-card"><span>Subtotal</span><strong>${currency(cartTotal.subtotal)}</strong></div>
+          <div class="metric-card"><span>Total atual</span><strong>${currency(cartTotal.total)}</strong></div>
+          <div class="metric-card"><span>Troco</span><strong>${currency(cartTotal.change)}</strong></div>
         </div>
 
         <div class="sales-layout">
@@ -1056,9 +998,12 @@ export function createSalesModule(ctx) {
     tabEls.sales.querySelector('#open-sales-history-btn').addEventListener('click', openHistoryModal);
     searchInput.addEventListener('keydown', handleSalesSearchInputKeydown);
     searchInput.addEventListener('input', handleSalesSearchInputAutoScan);
-    tabEls.sales.querySelector('#sale-form').addEventListener('submit', handleSaleSubmit);
-    tabEls.sales.querySelector('#clear-cart-btn').addEventListener('click', clearCartWithFeedback);
-    tabEls.sales.querySelector('#camera-scan-btn')?.addEventListener('click', handleBarcodeReadAction);
+    bindSubmitGuard(tabEls.sales.querySelector('#sale-form'), finishSale, { busyLabel: 'Finalizando...' });
+    bindAsyncButton(tabEls.sales.querySelector('#clear-cart-btn'), async () => {
+      clearCartWithFeedback();
+    }, { busyLabel: 'Limpando...' });
+
+    bindAsyncButton(tabEls.sales.querySelector('#camera-scan-btn'), handleBarcodeReadAction, { busyLabel: 'Abrindo...' });
 
     tabEls.sales.querySelector('#sale-client-picker-btn')?.addEventListener('click', () => {
       const modalRoot = document.getElementById('modal-root');
@@ -1098,10 +1043,10 @@ export function createSalesModule(ctx) {
       });
     });
 
-    tabEls.sales.querySelector('#sale-client-clear-btn')?.addEventListener('click', () => {
+    bindAsyncButton(tabEls.sales.querySelector('#sale-client-clear-btn'), async () => {
       tabEls.sales.querySelector('#sale-client-id').value = '';
       tabEls.sales.querySelector('#sale-client-selected').value = '';
-    });
+    }, { busyLabel: 'Limpando...' });
 
     bindCartButtons();
     bindKeyboardShortcuts();

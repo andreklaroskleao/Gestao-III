@@ -29,6 +29,8 @@ export function createSettingsModule(ctx) {
     dateTo: ''
   };
 
+  let shouldShowAuditLogs = false;
+
   async function handleSettingsSubmit(event) {
     event.preventDefault();
 
@@ -100,7 +102,7 @@ export function createSettingsModule(ctx) {
   }
 
   function bindAuditFilters() {
-    tabEls.settings.querySelector('#audit-filter-apply').addEventListener('click', () => {
+    tabEls.settings.querySelector('#audit-filter-apply')?.addEventListener('click', () => {
       auditFilters.module = tabEls.settings.querySelector('#audit-filter-module')?.value || '';
       auditFilters.action = tabEls.settings.querySelector('#audit-filter-action')?.value || '';
       auditFilters.entityType = tabEls.settings.querySelector('#audit-filter-entity-type')?.value || '';
@@ -108,10 +110,12 @@ export function createSettingsModule(ctx) {
       auditFilters.user = tabEls.settings.querySelector('#audit-filter-user')?.value || '';
       auditFilters.dateFrom = tabEls.settings.querySelector('#audit-filter-date-from')?.value || '';
       auditFilters.dateTo = tabEls.settings.querySelector('#audit-filter-date-to')?.value || '';
+
+      shouldShowAuditLogs = true;
       render();
     });
 
-    tabEls.settings.querySelector('#audit-filter-clear').addEventListener('click', () => {
+    tabEls.settings.querySelector('#audit-filter-clear')?.addEventListener('click', () => {
       auditFilters = {
         module: '',
         action: '',
@@ -121,6 +125,8 @@ export function createSettingsModule(ctx) {
         dateFrom: '',
         dateTo: ''
       };
+
+      shouldShowAuditLogs = false;
       render();
     });
   }
@@ -200,8 +206,8 @@ export function createSettingsModule(ctx) {
   }
 
   function bindEvents() {
-    tabEls.settings.querySelector('#settings-form').addEventListener('submit', handleSettingsSubmit);
-    tabEls.settings.querySelector('#password-form').addEventListener('submit', handlePasswordSubmit);
+    tabEls.settings.querySelector('#settings-form')?.addEventListener('submit', handleSettingsSubmit);
+    tabEls.settings.querySelector('#password-form')?.addEventListener('submit', handlePasswordSubmit);
 
     bindAuditFilters();
     bindBackupEvents();
@@ -407,7 +413,7 @@ export function createSettingsModule(ctx) {
         <div class="table-card">
           <div class="section-header">
             <h2>Auditoria</h2>
-            <span class="muted">Filtro refinado dos eventos do sistema</span>
+            <span class="muted">Aplique filtros para exibir os logs</span>
           </div>
 
           <div class="search-row" style="margin-bottom:14px;">
@@ -422,7 +428,7 @@ export function createSettingsModule(ctx) {
             <button class="btn btn-secondary" type="button" id="audit-filter-clear">Limpar</button>
           </div>
 
-          ${auditModule.renderAuditTable(auditFilters)}
+          ${auditModule.renderAuditTable(auditFilters, shouldShowAuditLogs)}
         </div>
       </div>
     `;

@@ -1,4 +1,4 @@
-import { escapeHtml, showToast } from './ui.js';
+import { escapeHtml, showToast, bindSubmitGuard, bindAsyncButton } from './ui.js';
 
 export function createProductsModule(ctx) {
   const {
@@ -30,6 +30,7 @@ export function createProductsModule(ctx) {
   let scannerTimer = null;
   let scannerReader = null;
   let scannerRunning = false;
+  let isSavingProduct = false;
 
   function isMobileDevice() {
     return /Android|iPhone|iPad|iPod|Mobile|Windows Phone|Opera Mini/i.test(navigator.userAgent)
@@ -60,9 +61,7 @@ export function createProductsModule(ctx) {
     const allProducts = state.products || [];
     const activeProducts = allProducts.filter((item) => item.status !== 'inativo');
     const lowStockCount = activeProducts.filter((item) => Number(item.quantity || 0) <= Number(state.settings?.lowStockThreshold || 5)).length;
-    const inventoryValue = activeProducts.reduce((sum, item) => {
-      return sum + (Number(item.quantity || 0) * Number(item.costPrice || 0));
-    }, 0);
+    const inventoryValue = activeProducts.reduce((sum, item) => sum + (Number(item.quantity || 0) * Number(item.costPrice || 0)), 0);
 
     return {
       totalCount: allProducts.length,
@@ -72,55 +71,60 @@ export function createProductsModule(ctx) {
     };
   }
 
-  async function handleProductSubmit(event) {
-    event.preventDefault();
+  async function saveProduct() {
+    if (isSavingProduct) return;
+    isSavingProduct = true;
 
-    const form = event.currentTarget;
-    const payload = Object.fromEntries(new FormData(form).entries());
+    try {
+      const form = tabEls.products.querySelector('#product-form');
+      const payload = Object.fromEntries(new FormData(form).entries());
 
-    payload.costPrice = toNumber(payload.costPrice);
-    payload.salePrice = toNumber(payload.salePrice);
-    payload.quantity = toNumber(payload.quantity);
-    payload.status = payload.status || 'ativo';
-    payload.deleted = false;
+      payload.costPrice = toNumber(payload.costPrice);
+      payload.salePrice = toNumber(payload.salePrice);
+      payload.quantity = toNumber(payload.quantity);
+      payload.status = payload.status || 'ativo';
+      payload.deleted = false;
 
-    if (state.editingProductId) {
-      const current = state.products.find((item) => item.id === state.editingProductId);
+      if (state.editingProductId) {
+        const current = state.products.find((item) => item.id === state.editingProductId);
 
-      await updateByPath('products', state.editingProductId, payload);
+        await updateByPath('products', state.editingProductId, payload);
 
-      await auditModule.log({
-        module: 'products',
-        action: 'update',
-        entityType: 'product',
-        entityId: state.editingProductId,
-        entityLabel: payload.name || current?.name || '',
-        description: 'Produto atualizado.',
-        metadata: {
-          previousName: current?.name || '',
-          newName: payload.name || ''
-        }
-      });
+        await auditModule.log({
+          module: 'products',
+          action: 'update',
+          entityType: 'product',
+          entityId: state.editingProductId,
+          entityLabel: payload.name || current?.name || '',
+          description: 'Produto atualizado.',
+          metadata: {
+            previousName: current?.name || '',
+            newName: payload.name || ''
+          }
+        });
 
-      state.editingProductId = null;
-      showToast('Produto atualizado.', 'success');
-    } else {
-      const createdId = await createDoc(refs.products, payload);
+        state.editingProductId = null;
+        showToast('Produto atualizado.', 'success');
+      } else {
+        const createdId = await createDoc(refs.products, payload);
 
-      await auditModule.log({
-        module: 'products',
-        action: 'create',
-        entityType: 'product',
-        entityId: createdId,
-        entityLabel: payload.name || '',
-        description: 'Produto cadastrado.'
-      });
+        await auditModule.log({
+          module: 'products',
+          action: 'create',
+          entityType: 'product',
+          entityId: createdId,
+          entityLabel: payload.name || '',
+          description: 'Produto cadastrado.'
+        });
 
-      showToast('Produto cadastrado.', 'success');
+        showToast('Produto cadastrado.', 'success');
+      }
+
+      form.reset();
+      render();
+    } finally {
+      isSavingProduct = false;
     }
-
-    form.reset();
-    render();
   }
 
   function fillEditingForm(form) {
@@ -434,50 +438,17 @@ export function createProductsModule(ctx) {
     if (product.status === 'inativo') {
       return `
         <div class="actions-inline-compact">
-          <button
-            class="icon-action-btn"
-            type="button"
-            data-product-edit="${product.id}"
-            title="Editar"
-            aria-label="Editar"
-          >✏️</button>
-
-          <button
-            class="icon-action-btn"
-            type="button"
-            data-product-more="${product.id}"
-            title="Mais ações"
-            aria-label="Mais ações"
-          >⋯</button>
+          <button class="icon-action-btn" type="button" data-product-edit="${product.id}" title="Editar" aria-label="Editar">✏️</button>
+          <button class="icon-action-btn" type="button" data-product-more="${product.id}" title="Mais ações" aria-label="Mais ações">⋯</button>
         </div>
       `;
     }
 
     return `
       <div class="actions-inline-compact">
-        <button
-          class="icon-action-btn"
-          type="button"
-          data-product-edit="${product.id}"
-          title="Editar"
-          aria-label="Editar"
-        >✏️</button>
-
-        <button
-          class="icon-action-btn info"
-          type="button"
-          data-product-move="${product.id}"
-          title="Movimentar estoque"
-          aria-label="Movimentar estoque"
-        >📦</button>
-
-        <button
-          class="icon-action-btn"
-          type="button"
-          data-product-more="${product.id}"
-          title="Mais ações"
-          aria-label="Mais ações"
-        >⋯</button>
+        <button class="icon-action-btn" type="button" data-product-edit="${product.id}" title="Editar" aria-label="Editar">✏️</button>
+        <button class="icon-action-btn info" type="button" data-product-move="${product.id}" title="Movimentar estoque" aria-label="Movimentar estoque">📦</button>
+        <button class="icon-action-btn" type="button" data-product-more="${product.id}" title="Mais ações" aria-label="Mais ações">⋯</button>
       </div>
     `;
   }
@@ -505,13 +476,7 @@ export function createProductsModule(ctx) {
 
   function renderBarcodeButton() {
     return `
-      <button
-        class="icon-btn"
-        type="button"
-        id="product-barcode-capture-btn"
-        title="Capturar código de barras"
-        aria-label="Capturar código de barras"
-      >
+      <button class="icon-btn" type="button" id="product-barcode-capture-btn" title="Capturar código de barras" aria-label="Capturar código de barras">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M4 7v10"></path>
           <path d="M7 7v10"></path>
@@ -525,15 +490,13 @@ export function createProductsModule(ctx) {
   }
 
   function bindEvents() {
-    const form = tabEls.products.querySelector('#product-form');
+    bindSubmitGuard(tabEls.products.querySelector('#product-form'), saveProduct, { busyLabel: 'Salvando...' });
 
-    form.addEventListener('submit', handleProductSubmit);
-
-    tabEls.products.querySelector('#product-reset-btn').addEventListener('click', () => {
+    bindAsyncButton(tabEls.products.querySelector('#product-reset-btn'), async () => {
       state.editingProductId = null;
       closeBarcodeScannerModal();
       render();
-    });
+    }, { busyLabel: 'Limpando...' });
 
     tabEls.products.querySelector('#product-filter-apply').addEventListener('click', () => {
       productFilters.text = tabEls.products.querySelector('#product-filter-input').value || '';
@@ -541,17 +504,17 @@ export function createProductsModule(ctx) {
       render();
     });
 
-    tabEls.products.querySelector('#product-filter-clear').addEventListener('click', () => {
+    bindAsyncButton(tabEls.products.querySelector('#product-filter-clear'), async () => {
       productFilters = {
         text: '',
         status: ''
       };
       render();
-    });
+    }, { busyLabel: 'Limpando...' });
 
     tabEls.products.querySelector('#movement-filter-apply').addEventListener('click', applyMovementFilters);
 
-    tabEls.products.querySelector('#movement-filter-clear').addEventListener('click', () => {
+    bindAsyncButton(tabEls.products.querySelector('#movement-filter-clear'), async () => {
       movementFilters = {
         product: '',
         type: '',
@@ -560,9 +523,9 @@ export function createProductsModule(ctx) {
         dateTo: ''
       };
       render();
-    });
+    }, { busyLabel: 'Limpando...' });
 
-    tabEls.products.querySelector('#product-barcode-capture-btn')?.addEventListener('click', handleBarcodeCaptureClick);
+    bindAsyncButton(tabEls.products.querySelector('#product-barcode-capture-btn'), handleBarcodeCaptureClick, { busyLabel: 'Abrindo...' });
 
     bindProductTableActions(tabEls.products);
   }
@@ -575,22 +538,10 @@ export function createProductsModule(ctx) {
     tabEls.products.innerHTML = `
       <div class="section-stack">
         <div class="cards-grid">
-          <div class="metric-card">
-            <span>Total de produtos</span>
-            <strong>${summary.totalCount}</strong>
-          </div>
-          <div class="metric-card">
-            <span>Produtos ativos</span>
-            <strong>${summary.activeCount}</strong>
-          </div>
-          <div class="metric-card">
-            <span>Estoque baixo</span>
-            <strong>${summary.lowStockCount}</strong>
-          </div>
-          <div class="metric-card">
-            <span>Valor em custo</span>
-            <strong>${currency(summary.inventoryValue)}</strong>
-          </div>
+          <div class="metric-card"><span>Total de produtos</span><strong>${summary.totalCount}</strong></div>
+          <div class="metric-card"><span>Produtos ativos</span><strong>${summary.activeCount}</strong></div>
+          <div class="metric-card"><span>Estoque baixo</span><strong>${summary.lowStockCount}</strong></div>
+          <div class="metric-card"><span>Valor em custo</span><strong>${currency(summary.inventoryValue)}</strong></div>
         </div>
 
         <div class="users-layout">

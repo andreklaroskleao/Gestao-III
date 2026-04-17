@@ -376,6 +376,8 @@ pwaModule.bindInstallPrompt();
 pwaModule.bindOnlineOfflineFeedback();
 
 function setScreen(isAuthenticated) {
+  if (!els.loginScreen || !els.appScreen) return;
+
   els.loginScreen.classList.toggle('active', !isAuthenticated);
   els.appScreen.classList.toggle('active', isAuthenticated);
 }
@@ -407,8 +409,8 @@ function activateTab(tab) {
     settings: 'Configurações'
   };
 
-  els.pageTitle.textContent = titleMap[tab] || 'Sistema';
-  els.pageSubtitle.textContent = `Área: ${titleMap[tab] || tab}.`;
+  if (els.pageTitle) els.pageTitle.textContent = titleMap[tab] || 'Sistema';
+  if (els.pageSubtitle) els.pageSubtitle.textContent = `Área: ${titleMap[tab] || tab}.`;
 
   renderActiveTab();
 }
@@ -504,6 +506,8 @@ function renderApp() {
 }
 
 function renderStockAlerts() {
+  if (!els.stockAlertCount || !els.stockAlertList) return;
+
   const lowStock = dashboardModule.getLowStockProducts();
   const receivablesSummary = receivablesAlertsModule.getNotificationSummary();
 
@@ -615,9 +619,10 @@ function resetAppState() {
   state.editingPurchaseId = null;
 
   document.body.classList.remove('sidebar-open');
-  els.alertsPanel.classList.add('hidden');
-  els.stockAlertList.innerHTML = '';
-  els.stockAlertCount.textContent = '0';
+  els.alertsPanel?.classList.add('hidden');
+
+  if (els.stockAlertList) els.stockAlertList.innerHTML = '';
+  if (els.stockAlertCount) els.stockAlertCount.textContent = '0';
 
   Object.values(tabEls).forEach((panel) => {
     if (panel) {
@@ -630,11 +635,10 @@ function resetAppState() {
   if (modalRoot) modalRoot.innerHTML = '';
 
   if (els.globalSearchInput) els.globalSearchInput.value = '';
-
-  els.currentUserName.textContent = 'Usuário';
-  els.pageTitle.textContent = 'Dashboard';
-  els.pageSubtitle.textContent = 'Área: Dashboard.';
-  els.loginForm.reset();
+  if (els.currentUserName) els.currentUserName.textContent = 'Usuário';
+  if (els.pageTitle) els.pageTitle.textContent = 'Dashboard';
+  if (els.pageSubtitle) els.pageSubtitle.textContent = 'Área: Dashboard.';
+  if (els.loginForm) els.loginForm.reset();
 
   closeActionsSheet();
 }
@@ -676,7 +680,10 @@ function bootstrapData() {
       state.settings = { ...state.settings, ...current };
     }
 
-    els.storeNameSide.textContent = state.settings.storeName || 'Gestão Comercial';
+    if (els.storeNameSide) {
+      els.storeNameSide.textContent = state.settings.storeName || 'Gestão Comercial';
+    }
+
     renderSettings();
     renderDashboard();
     renderStockAlerts();
@@ -967,10 +974,15 @@ function performGlobalSearch(rawTerm) {
 window.openActionsSheet = openActionsSheet;
 window.closeActionsSheet = closeActionsSheet;
 
-els.loginForm.addEventListener('submit', handleLogin);
-bindAsyncButton(els.logoutBtn, handleLogout, { busyLabel: 'Saindo...' });
+if (els.loginForm) {
+  els.loginForm.addEventListener('submit', handleLogin);
+}
 
-els.nav.addEventListener('click', (event) => {
+if (els.logoutBtn) {
+  bindAsyncButton(els.logoutBtn, handleLogout, { busyLabel: 'Saindo...' });
+}
+
+els.nav?.addEventListener('click', (event) => {
   const btn = event.target.closest('[data-tab]');
   if (!btn) return;
 
@@ -985,14 +997,16 @@ els.nav.addEventListener('click', (event) => {
   closeMobileSidebar();
 });
 
-els.stockAlertBtn.addEventListener('click', () => {
-  els.alertsPanel.classList.toggle('hidden');
+els.stockAlertBtn?.addEventListener('click', () => {
+  els.alertsPanel?.classList.toggle('hidden');
 });
 
 els.sidebarToggle?.addEventListener('click', toggleSidebar);
 els.mobileSidebarToggle?.addEventListener('click', toggleSidebar);
 
 document.addEventListener('click', (event) => {
+  if (!els.alertsPanel || !els.stockAlertBtn) return;
+
   if (!els.alertsPanel.contains(event.target) && !els.stockAlertBtn.contains(event.target)) {
     els.alertsPanel.classList.add('hidden');
   }
@@ -1042,8 +1056,13 @@ watchAuth(async (user) => {
     return;
   }
 
-  els.currentUserName.textContent = `${user.fullName || ''} · ${user.accessLevel || 'standard'}`;
-  els.storeNameSide.textContent = state.settings.storeName || 'Gestão Comercial';
+  if (els.currentUserName) {
+    els.currentUserName.textContent = `${user.fullName || ''} · ${user.accessLevel || 'standard'}`;
+  }
+
+  if (els.storeNameSide) {
+    els.storeNameSide.textContent = state.settings.storeName || 'Gestão Comercial';
+  }
 
   setScreen(true);
   bootstrapData();

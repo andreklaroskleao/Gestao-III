@@ -58,8 +58,23 @@ export function createClientsTabModule(ctx) {
   function renderHistory(clientId) {
     const historyHost = tabEls.clients.querySelector('#client-history-host');
     if (!historyHost) return;
-
     historyHost.innerHTML = clientsModule.renderClientHistory(clientId);
+  }
+
+  function openClientActions(clientId) {
+    window.openActionsSheet?.('Ações do cliente', [
+      {
+        label: 'Inativar',
+        className: 'btn btn-danger',
+        onClick: async () => {
+          await clientsModule.inactivateClient(clientId);
+          showToast('Cliente inativado.', 'success');
+          if (state.editingClientId === clientId) {
+            state.editingClientId = null;
+          }
+        }
+      }
+    ]);
   }
 
   function renderClientActions(client) {
@@ -81,20 +96,13 @@ export function createClientsTabModule(ctx) {
           aria-label="Histórico"
         >👁️</button>
 
-        <details class="actions-menu">
-          <summary
-            class="icon-action-btn"
-            title="Mais ações"
-            aria-label="Mais ações"
-          >⋯</summary>
-          <div class="actions-menu-popover">
-            <button
-              class="btn btn-danger"
-              type="button"
-              data-client-inactivate="${client.id}"
-            >Inativar</button>
-          </div>
-        </details>
+        <button
+          class="icon-action-btn"
+          type="button"
+          data-client-more="${client.id}"
+          title="Mais ações"
+          aria-label="Mais ações"
+        >⋯</button>
       </div>
     `;
   }
@@ -153,27 +161,15 @@ export function createClientsTabModule(ctx) {
       });
     });
 
-    tabEls.clients.querySelectorAll('[data-client-inactivate]').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        const confirmed = window.confirm('Inativar este cliente?');
-        if (!confirmed) return;
-
-        try {
-          await clientsModule.inactivateClient(btn.dataset.clientInactivate);
-          showToast('Cliente inativado.', 'success');
-          if (state.editingClientId === btn.dataset.clientInactivate) {
-            state.editingClientId = null;
-          }
-        } catch (error) {
-          console.error(error);
-          alert(error.message || 'Erro ao inativar cliente.');
-        }
-      });
-    });
-
     tabEls.clients.querySelectorAll('[data-client-history]').forEach((btn) => {
       btn.addEventListener('click', () => {
         renderHistory(btn.dataset.clientHistory);
+      });
+    });
+
+    tabEls.clients.querySelectorAll('[data-client-more]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        openClientActions(btn.dataset.clientMore);
       });
     });
   }

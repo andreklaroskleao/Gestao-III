@@ -2562,3 +2562,30 @@ table {
     min-width: 640px;
   }
 }
+
+.audit-summary-line {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  color: var(--text-soft);
+  font-size: 0.88rem;
+}
+
+.search-result-item {
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: inherit;
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.search-result-item:hover {
+  background: rgba(255,255,255,0.04);
+}
+
+body.theme-light .search-result-item:hover {
+  background: rgba(0,0,0,0.03);
+}

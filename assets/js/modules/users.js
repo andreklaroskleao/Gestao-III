@@ -1,4 +1,4 @@
-import { escapeHtml, renderBlocked, showToast } from './ui.js';
+import { escapeHtml, renderBlocked, showToast, bindSubmitGuard, bindAsyncButton } from './ui.js';
 
 export function createUsersModule(ctx) {
   const {
@@ -20,6 +20,8 @@ export function createUsersModule(ctx) {
     status: ''
   };
 
+  let isSavingUser = false;
+
   function hasAccess() {
     return Array.isArray(state.currentUser?.permissions)
       && state.currentUser.permissions.includes('users');
@@ -28,10 +30,7 @@ export function createUsersModule(ctx) {
   function normalizeAccessLevelOptions() {
     return (ACCESS_LEVELS || []).map((level) => {
       if (typeof level === 'string') {
-        return {
-          value: level,
-          label: level
-        };
+        return { value: level, label: level };
       }
 
       return {
@@ -64,9 +63,7 @@ export function createUsersModule(ctx) {
   }
 
   function buildDefaultPermissions(role, accessLevel) {
-    if (accessLevel === 'master') {
-      return [...AREAS];
-    }
+    if (accessLevel === 'master') return [...AREAS];
 
     const baseByRole = {
       Administrador: ['dashboard', 'sales', 'products', 'reports', 'deliveries', 'clients', 'suppliers', 'purchases', 'payables', 'users', 'settings'],
@@ -137,12 +134,7 @@ export function createUsersModule(ctx) {
       <div class="permission-grid">
         ${AREAS.map((area) => `
           <label class="permission-item">
-            <input
-              type="checkbox"
-              name="permissions"
-              value="${area}"
-              ${suggested.includes(area) ? 'checked' : ''}
-            />
+            <input type="checkbox" name="permissions" value="${area}" ${suggested.includes(area) ? 'checked' : ''} />
             <span>${escapeHtml(getAreaLabel(area))}</span>
           </label>
         `).join('')}
@@ -206,42 +198,30 @@ export function createUsersModule(ctx) {
   function renderUserActions(user) {
     return `
       <div class="actions-inline-compact">
-        <button
-          class="icon-action-btn"
-          type="button"
-          data-user-edit="${user.id}"
-          title="Editar"
-          aria-label="Editar"
-        >✏️</button>
-
-        <button
-          class="icon-action-btn"
-          type="button"
-          data-user-more="${user.id}"
-          title="Mais ações"
-          aria-label="Mais ações"
-        >⋯</button>
+        <button class="icon-action-btn" type="button" data-user-edit="${user.id}" title="Editar" aria-label="Editar">✏️</button>
+        <button class="icon-action-btn" type="button" data-user-more="${user.id}" title="Mais ações" aria-label="Mais ações">⋯</button>
       </div>
     `;
   }
 
-  async function handleSubmit(event) {
-    event.preventDefault();
-
-    const form = event.currentTarget;
-    const payload = collectFormPayload(form);
-
-    if (!payload.fullName || !payload.username || !payload.email) {
-      alert('Preencha nome, usuário e e-mail.');
-      return;
-    }
-
-    if (!state.editingUserId && !payload.password) {
-      alert('A senha é obrigatória para criar usuário.');
-      return;
-    }
+  async function saveUser() {
+    if (isSavingUser) return;
+    isSavingUser = true;
 
     try {
+      const form = tabEls.users.querySelector('#user-form');
+      const payload = collectFormPayload(form);
+
+      if (!payload.fullName || !payload.username || !payload.email) {
+        alert('Preencha nome, usuário e e-mail.');
+        return;
+      }
+
+      if (!state.editingUserId && !payload.password) {
+        alert('A senha é obrigatória para criar usuário.');
+        return;
+      }
+
       if (state.editingUserId) {
         const target = getEditingUser();
 
@@ -280,9 +260,8 @@ export function createUsersModule(ctx) {
       form.reset();
       await refreshUsers();
       render();
-    } catch (error) {
-      console.error(error);
-      alert(error.message || 'Erro ao salvar usuário.');
+    } finally {
+      isSavingUser = false;
     }
   }
 
@@ -302,14 +281,14 @@ export function createUsersModule(ctx) {
       render();
     });
 
-    tabEls.users.querySelector('#user-filter-clear')?.addEventListener('click', () => {
+    bindAsyncButton(tabEls.users.querySelector('#user-filter-clear'), async () => {
       filters = {
         term: '',
         role: '',
         status: ''
       };
       render();
-    });
+    }, { busyLabel: 'Limpando...' });
   }
 
   function bindActions() {
@@ -341,12 +320,12 @@ export function createUsersModule(ctx) {
     roleSelect?.addEventListener('change', rerenderPermissions);
     accessSelect?.addEventListener('change', rerenderPermissions);
 
-    tabEls.users.querySelector('#user-reset-btn')?.addEventListener('click', () => {
+    bindAsyncButton(tabEls.users.querySelector('#user-reset-btn'), async () => {
       state.editingUserId = null;
       render();
-    });
+    }, { busyLabel: 'Limpando...' });
 
-    form?.addEventListener('submit', handleSubmit);
+    bindSubmitGuard(form, saveUser, { busyLabel: 'Salvando...' });
   }
 
   function bindEvents() {
@@ -369,22 +348,10 @@ export function createUsersModule(ctx) {
     tabEls.users.innerHTML = `
       <div class="section-stack">
         <div class="cards-grid">
-          <div class="metric-card">
-            <span>Total de usuários</span>
-            <strong>${summary.total}</strong>
-          </div>
-          <div class="metric-card">
-            <span>Ativos</span>
-            <strong>${summary.active}</strong>
-          </div>
-          <div class="metric-card">
-            <span>Inativos</span>
-            <strong>${summary.inactive}</strong>
-          </div>
-          <div class="metric-card">
-            <span>Administradores</span>
-            <strong>${summary.admins}</strong>
-          </div>
+          <div class="metric-card"><span>Total de usuários</span><strong>${summary.total}</strong></div>
+          <div class="metric-card"><span>Ativos</span><strong>${summary.active}</strong></div>
+          <div class="metric-card"><span>Inativos</span><strong>${summary.inactive}</strong></div>
+          <div class="metric-card"><span>Administradores</span><strong>${summary.admins}</strong></div>
         </div>
 
         <div class="users-layout">
@@ -528,20 +495,9 @@ export function createUsersModule(ctx) {
               </div>
 
               <div class="cards-grid" style="grid-template-columns:1fr; gap:12px;">
-                <div class="compact-card">
-                  <span class="muted">Usuários ativos</span>
-                  <strong>${summary.active}</strong>
-                </div>
-
-                <div class="compact-card">
-                  <span class="muted">Usuários inativos</span>
-                  <strong>${summary.inactive}</strong>
-                </div>
-
-                <div class="compact-card">
-                  <span class="muted">Com acesso administrativo</span>
-                  <strong>${summary.admins}</strong>
-                </div>
+                <div class="compact-card"><span class="muted">Usuários ativos</span><strong>${summary.active}</strong></div>
+                <div class="compact-card"><span class="muted">Usuários inativos</span><strong>${summary.inactive}</strong></div>
+                <div class="compact-card"><span class="muted">Com acesso administrativo</span><strong>${summary.admins}</strong></div>
               </div>
             </div>
           </div>

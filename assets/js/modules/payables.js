@@ -1,4 +1,4 @@
-import { escapeHtml, renderBlocked, showToast } from './ui.js';
+import { escapeHtml, renderBlocked, showToast, bindSubmitGuard, bindAsyncButton } from './ui.js';
 
 export function createPayablesModule(ctx) {
   const {
@@ -20,6 +20,8 @@ export function createPayablesModule(ctx) {
     dateFrom: '',
     dateTo: ''
   };
+
+  let isSavingPayable = false;
 
   function getRows() {
     return state.accountsPayable || [];
@@ -100,18 +102,19 @@ export function createPayablesModule(ctx) {
     return Math.max(0, Number(totalAmount || 0) - Number(paidAmount || 0));
   }
 
-  async function handleSubmit(event) {
-    event.preventDefault();
-
-    const form = event.currentTarget;
-    const payload = Object.fromEntries(new FormData(form).entries());
-
-    payload.totalAmount = toNumber(payload.totalAmount);
-    payload.paidAmount = toNumber(payload.paidAmount);
-    payload.openAmount = recalcOpenAmount(payload.totalAmount, payload.paidAmount);
-    payload.deleted = false;
+  async function savePayable() {
+    if (isSavingPayable) return;
+    isSavingPayable = true;
 
     try {
+      const form = tabEls.payables.querySelector('#payable-form');
+      const payload = Object.fromEntries(new FormData(form).entries());
+
+      payload.totalAmount = toNumber(payload.totalAmount);
+      payload.paidAmount = toNumber(payload.paidAmount);
+      payload.openAmount = recalcOpenAmount(payload.totalAmount, payload.paidAmount);
+      payload.deleted = false;
+
       if (state.editingPayableId) {
         const current = getEditingRow();
 
@@ -145,9 +148,8 @@ export function createPayablesModule(ctx) {
 
       form.reset();
       render();
-    } catch (error) {
-      console.error(error);
-      alert(error.message || 'Erro ao salvar conta a pagar.');
+    } finally {
+      isSavingPayable = false;
     }
   }
 
@@ -167,18 +169,9 @@ export function createPayablesModule(ctx) {
           </div>
 
           <div class="sale-details-grid" style="margin-bottom:14px;">
-            <div class="sale-details-box">
-              <span>Fornecedor</span>
-              <strong>${escapeHtml(row.supplierName || '-')}</strong>
-            </div>
-            <div class="sale-details-box">
-              <span>Total</span>
-              <strong>${currency(row.totalAmount || 0)}</strong>
-            </div>
-            <div class="sale-details-box">
-              <span>Em aberto</span>
-              <strong>${currency(row.openAmount || 0)}</strong>
-            </div>
+            <div class="sale-details-box"><span>Fornecedor</span><strong>${escapeHtml(row.supplierName || '-')}</strong></div>
+            <div class="sale-details-box"><span>Total</span><strong>${currency(row.totalAmount || 0)}</strong></div>
+            <div class="sale-details-box"><span>Em aberto</span><strong>${currency(row.openAmount || 0)}</strong></div>
           </div>
 
           <form id="payable-payment-form" class="form-grid">
@@ -205,19 +198,16 @@ export function createPayablesModule(ctx) {
 
     modalRoot.querySelector('#payable-payment-modal-close').addEventListener('click', closeModal);
     modalRoot.querySelector('#payable-payment-modal-backdrop').addEventListener('click', (event) => {
-      if (event.target.id === 'payable-payment-modal-backdrop') {
-        closeModal();
-      }
+      if (event.target.id === 'payable-payment-modal-backdrop') closeModal();
     });
 
     modalRoot.querySelector('#payable-payment-full-btn').addEventListener('click', () => {
       modalRoot.querySelector('input[name="paymentAmount"]').value = Number(row.openAmount || 0);
     });
 
-    modalRoot.querySelector('#payable-payment-form').addEventListener('submit', async (event) => {
-      event.preventDefault();
-
-      const values = Object.fromEntries(new FormData(event.currentTarget).entries());
+    bindSubmitGuard(modalRoot.querySelector('#payable-payment-form'), async () => {
+      const form = modalRoot.querySelector('#payable-payment-form');
+      const values = Object.fromEntries(new FormData(form).entries());
       const paymentAmount = toNumber(values.paymentAmount);
 
       if (paymentAmount <= 0) {
@@ -230,36 +220,31 @@ export function createPayablesModule(ctx) {
         return;
       }
 
-      try {
-        const newPaidAmount = Number(row.paidAmount || 0) + paymentAmount;
-        const newOpenAmount = Math.max(0, Number(row.totalAmount || 0) - newPaidAmount);
+      const newPaidAmount = Number(row.paidAmount || 0) + paymentAmount;
+      const newOpenAmount = Math.max(0, Number(row.totalAmount || 0) - newPaidAmount);
 
-        await updateByPath('accounts_payable', row.id, {
-          paidAmount: newPaidAmount,
-          openAmount: newOpenAmount,
-          lastPaymentAt: new Date().toISOString(),
-          lastPaymentNote: String(values.paymentNote || '')
-        });
+      await updateByPath('accounts_payable', row.id, {
+        paidAmount: newPaidAmount,
+        openAmount: newOpenAmount,
+        lastPaymentAt: new Date().toISOString(),
+        lastPaymentNote: String(values.paymentNote || '')
+      });
 
-        await auditModule.log({
-          module: 'payables',
-          action: 'payment',
-          entityType: 'account_payable',
-          entityId: row.id,
-          entityLabel: row.description || '',
-          description: 'Pagamento registrado em conta a pagar.',
-          metadata: {
-            paymentAmount
-          }
-        });
+      await auditModule.log({
+        module: 'payables',
+        action: 'payment',
+        entityType: 'account_payable',
+        entityId: row.id,
+        entityLabel: row.description || '',
+        description: 'Pagamento registrado em conta a pagar.',
+        metadata: {
+          paymentAmount
+        }
+      });
 
-        showToast('Pagamento registrado.', 'success');
-        closeModal();
-      } catch (error) {
-        console.error(error);
-        alert(error.message || 'Erro ao registrar pagamento.');
-      }
-    });
+      showToast('Pagamento registrado.', 'success');
+      closeModal();
+    }, { busyLabel: 'Registrando...' });
   }
 
   function openDetailsModal(payableId) {
@@ -280,60 +265,25 @@ export function createPayablesModule(ctx) {
           </div>
 
           <div class="sale-details-grid">
-            <div class="sale-details-box">
-              <span>Fornecedor</span>
-              <strong>${escapeHtml(row.supplierName || '-')}</strong>
-            </div>
-            <div class="sale-details-box">
-              <span>Status</span>
-              <strong>${getStatusLabel(status)}</strong>
-            </div>
-            <div class="sale-details-box">
-              <span>Vencimento</span>
-              <strong>${escapeHtml(row.dueDate || '-')}</strong>
-            </div>
-            <div class="sale-details-box">
-              <span>Total</span>
-              <strong>${currency(row.totalAmount || 0)}</strong>
-            </div>
-            <div class="sale-details-box">
-              <span>Pago</span>
-              <strong>${currency(row.paidAmount || 0)}</strong>
-            </div>
-            <div class="sale-details-box">
-              <span>Em aberto</span>
-              <strong>${currency(row.openAmount || 0)}</strong>
-            </div>
-            <div class="sale-details-box">
-              <span>Documento</span>
-              <strong>${escapeHtml(row.documentNumber || '-')}</strong>
-            </div>
-            <div class="sale-details-box">
-              <span>Último pagamento</span>
-              <strong>${row.lastPaymentAt ? formatDateTime(row.lastPaymentAt) : '-'}</strong>
-            </div>
-            <div class="sale-details-box">
-              <span>Observação do pagamento</span>
-              <strong>${escapeHtml(row.lastPaymentNote || '-')}</strong>
-            </div>
+            <div class="sale-details-box"><span>Fornecedor</span><strong>${escapeHtml(row.supplierName || '-')}</strong></div>
+            <div class="sale-details-box"><span>Status</span><strong>${getStatusLabel(status)}</strong></div>
+            <div class="sale-details-box"><span>Vencimento</span><strong>${escapeHtml(row.dueDate || '-')}</strong></div>
+            <div class="sale-details-box"><span>Total</span><strong>${currency(row.totalAmount || 0)}</strong></div>
+            <div class="sale-details-box"><span>Pago</span><strong>${currency(row.paidAmount || 0)}</strong></div>
+            <div class="sale-details-box"><span>Em aberto</span><strong>${currency(row.openAmount || 0)}</strong></div>
+            <div class="sale-details-box"><span>Documento</span><strong>${escapeHtml(row.documentNumber || '-')}</strong></div>
+            <div class="sale-details-box"><span>Último pagamento</span><strong>${row.lastPaymentAt ? formatDateTime(row.lastPaymentAt) : '-'}</strong></div>
+            <div class="sale-details-box"><span>Observação do pagamento</span><strong>${escapeHtml(row.lastPaymentNote || '-')}</strong></div>
           </div>
 
           <div class="table-card" style="padding:14px;">
-            <div class="section-header">
-              <h3>Descrição</h3>
-            </div>
-            <div class="empty-state" style="padding:14px;">
-              ${escapeHtml(row.description || '-')}
-            </div>
+            <div class="section-header"><h3>Descrição</h3></div>
+            <div class="empty-state" style="padding:14px;">${escapeHtml(row.description || '-')}</div>
           </div>
 
           <div class="table-card" style="padding:14px; margin-top:14px;">
-            <div class="section-header">
-              <h3>Observações</h3>
-            </div>
-            <div class="empty-state" style="padding:14px;">
-              ${escapeHtml(row.notes || '-')}
-            </div>
+            <div class="section-header"><h3>Observações</h3></div>
+            <div class="empty-state" style="padding:14px;">${escapeHtml(row.notes || '-')}</div>
           </div>
         </div>
       </div>
@@ -345,9 +295,7 @@ export function createPayablesModule(ctx) {
 
     modalRoot.querySelector('#payable-details-modal-close').addEventListener('click', closeModal);
     modalRoot.querySelector('#payable-details-modal-backdrop').addEventListener('click', (event) => {
-      if (event.target.id === 'payable-details-modal-backdrop') {
-        closeModal();
-      }
+      if (event.target.id === 'payable-details-modal-backdrop') closeModal();
     });
   }
 
@@ -367,42 +315,20 @@ export function createPayablesModule(ctx) {
   function renderPayableActions(row) {
     return `
       <div class="actions-inline-compact">
-        <button
-          class="icon-action-btn success"
-          type="button"
-          data-payable-pay="${row.id}"
-          title="Pagar"
-          aria-label="Pagar"
-        >💰</button>
-
-        <button
-          class="icon-action-btn info"
-          type="button"
-          data-payable-view="${row.id}"
-          title="Detalhes"
-          aria-label="Detalhes"
-        >👁️</button>
-
-        <button
-          class="icon-action-btn"
-          type="button"
-          data-payable-more="${row.id}"
-          title="Mais ações"
-          aria-label="Mais ações"
-        >⋯</button>
+        <button class="icon-action-btn success" type="button" data-payable-pay="${row.id}" title="Pagar" aria-label="Pagar">💰</button>
+        <button class="icon-action-btn info" type="button" data-payable-view="${row.id}" title="Detalhes" aria-label="Detalhes">👁️</button>
+        <button class="icon-action-btn" type="button" data-payable-more="${row.id}" title="Mais ações" aria-label="Mais ações">⋯</button>
       </div>
     `;
   }
 
   function bindEvents() {
-    const form = tabEls.payables.querySelector('#payable-form');
-    form.addEventListener('submit', handleSubmit);
+    bindSubmitGuard(tabEls.payables.querySelector('#payable-form'), savePayable, { busyLabel: 'Salvando...' });
 
-    tabEls.payables.querySelector('#payable-reset-btn')?.addEventListener('click', () => {
+    bindAsyncButton(tabEls.payables.querySelector('#payable-reset-btn'), async () => {
       state.editingPayableId = null;
-      form.reset();
       render();
-    });
+    }, { busyLabel: 'Limpando...' });
 
     tabEls.payables.querySelector('#payable-filter-apply')?.addEventListener('click', () => {
       filters.supplier = tabEls.payables.querySelector('#payable-filter-supplier')?.value || '';
@@ -412,7 +338,7 @@ export function createPayablesModule(ctx) {
       render();
     });
 
-    tabEls.payables.querySelector('#payable-filter-clear')?.addEventListener('click', () => {
+    bindAsyncButton(tabEls.payables.querySelector('#payable-filter-clear'), async () => {
       filters = {
         supplier: '',
         status: '',
@@ -420,12 +346,12 @@ export function createPayablesModule(ctx) {
         dateTo: ''
       };
       render();
-    });
+    }, { busyLabel: 'Limpando...' });
 
     tabEls.payables.querySelectorAll('[data-payable-pay]').forEach((btn) => {
-      btn.addEventListener('click', () => {
+      bindAsyncButton(btn, async () => {
         openPaymentModal(btn.dataset.payablePay);
-      });
+      }, { busyLabel: '...' });
     });
 
     tabEls.payables.querySelectorAll('[data-payable-view]').forEach((btn) => {
@@ -454,22 +380,10 @@ export function createPayablesModule(ctx) {
     tabEls.payables.innerHTML = `
       <div class="section-stack">
         <div class="cards-grid">
-          <div class="metric-card">
-            <span>Total em aberto</span>
-            <strong>${currency(summary.totalOpen)}</strong>
-          </div>
-          <div class="metric-card">
-            <span>Total pago</span>
-            <strong>${currency(summary.totalPaid)}</strong>
-          </div>
-          <div class="metric-card">
-            <span>Vencidas</span>
-            <strong>${summary.overdueCount}</strong>
-          </div>
-          <div class="metric-card">
-            <span>Filtradas</span>
-            <strong>${summary.filtered}</strong>
-          </div>
+          <div class="metric-card"><span>Total em aberto</span><strong>${currency(summary.totalOpen)}</strong></div>
+          <div class="metric-card"><span>Total pago</span><strong>${currency(summary.totalPaid)}</strong></div>
+          <div class="metric-card"><span>Vencidas</span><strong>${summary.overdueCount}</strong></div>
+          <div class="metric-card"><span>Filtradas</span><strong>${summary.filtered}</strong></div>
         </div>
 
         <div class="users-layout">
@@ -549,22 +463,15 @@ export function createPayablesModule(ctx) {
               </div>
 
               <div class="search-row" style="margin-bottom:14px;">
-                <input
-                  id="payable-filter-supplier"
-                  placeholder="Fornecedor"
-                  value="${escapeHtml(filters.supplier)}"
-                />
-
+                <input id="payable-filter-supplier" placeholder="Fornecedor" value="${escapeHtml(filters.supplier)}" />
                 <select id="payable-filter-status">
                   <option value="">Todos os status</option>
                   <option value="em_aberto" ${filters.status === 'em_aberto' ? 'selected' : ''}>Em aberto</option>
                   <option value="vencido" ${filters.status === 'vencido' ? 'selected' : ''}>Vencido</option>
                   <option value="quitado" ${filters.status === 'quitado' ? 'selected' : ''}>Quitado</option>
                 </select>
-
                 <input id="payable-filter-date-from" type="date" value="${filters.dateFrom}" />
                 <input id="payable-filter-date-to" type="date" value="${filters.dateTo}" />
-
                 <button class="btn btn-secondary" type="button" id="payable-filter-apply">Filtrar</button>
                 <button class="btn btn-secondary" type="button" id="payable-filter-clear">Limpar</button>
               </div>
@@ -609,20 +516,9 @@ export function createPayablesModule(ctx) {
               </div>
 
               <div class="cards-grid" style="grid-template-columns:1fr; gap:12px;">
-                <div class="compact-card">
-                  <span class="muted">Em aberto</span>
-                  <strong>${currency(summary.totalOpen)}</strong>
-                </div>
-
-                <div class="compact-card">
-                  <span class="muted">Pago</span>
-                  <strong>${currency(summary.totalPaid)}</strong>
-                </div>
-
-                <div class="compact-card">
-                  <span class="muted">Vencidas</span>
-                  <strong>${summary.overdueCount}</strong>
-                </div>
+                <div class="compact-card"><span class="muted">Em aberto</span><strong>${currency(summary.totalOpen)}</strong></div>
+                <div class="compact-card"><span class="muted">Pago</span><strong>${currency(summary.totalPaid)}</strong></div>
+                <div class="compact-card"><span class="muted">Vencidas</span><strong>${summary.overdueCount}</strong></div>
               </div>
             </div>
           </div>

@@ -208,15 +208,7 @@ export function createDeliveriesModule(ctx) {
   function renderDeliveryActions(item) {
     const status = String(item.status || '');
 
-    let primaryAction = `
-      <button
-        class="icon-action-btn"
-        type="button"
-        data-delivery-edit="${item.id}"
-        title="Editar"
-        aria-label="Editar"
-      >✏️</button>
-    `;
+    let primaryAction = '';
 
     if (status === 'Agendado' || status === 'Reagendado') {
       primaryAction = `

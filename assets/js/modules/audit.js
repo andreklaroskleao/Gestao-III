@@ -1,3 +1,5 @@
+import { renderEmptyState, escapeHtml } from './ui.js';
+
 export function createAuditModule(ctx) {
   const { state, refs, createDoc, formatDateTime } = ctx;
 
@@ -44,7 +46,7 @@ export function createAuditModule(ctx) {
 
     return Object.entries(metadata)
       .filter(([, value]) => value !== undefined && value !== null && value !== '')
-      .slice(0, 4)
+      .slice(0, 5)
       .map(([key, value]) => `${key}: ${String(value)}`)
       .join(' | ');
   }
@@ -74,36 +76,17 @@ export function createAuditModule(ctx) {
       });
   }
 
-  function hasActiveAuditFilter(filters = {}) {
-    return Boolean(
-      filters.module
-      || filters.action
-      || filters.entityType
-      || filters.entityLabel
-      || filters.user
-      || filters.dateFrom
-      || filters.dateTo
-    );
-  }
-
-  function renderAuditTable(filters = {}, shouldShow = false) {
+  function renderAuditTable(filters = {}, shouldShow = false, pageSize = 40) {
     if (!shouldShow) {
-      return `
-        <div class="empty-state">
-          A auditoria será exibida somente depois de aplicar os filtros.
-        </div>
-      `;
+      return renderEmptyState('A auditoria será exibida somente depois de aplicar os filtros.');
     }
 
-    const rows = getFilteredLogs(filters).slice(0, 120);
-
+    const rows = getFilteredLogs(filters);
     if (!rows.length) {
-      return `
-        <div class="empty-state">
-          Nenhum registro encontrado para os filtros informados.
-        </div>
-      `;
+      return renderEmptyState('Nenhum registro encontrado para os filtros informados.');
     }
+
+    const visibleRows = rows.slice(0, pageSize);
 
     return `
       <div class="audit-table-scroll">
@@ -120,22 +103,22 @@ export function createAuditModule(ctx) {
               </tr>
             </thead>
             <tbody>
-              ${rows.map((item) => {
+              ${visibleRows.map((item) => {
                 const metadataText = formatMetadata(item.metadata);
                 return `
                   <tr>
                     <td>${formatDateTime(item.createdAt)}</td>
-                    <td>${truncateText(item.module || '-', 18)}</td>
-                    <td>${truncateText(item.action || '-', 18)}</td>
+                    <td>${escapeHtml(truncateText(item.module || '-', 18))}</td>
+                    <td>${escapeHtml(truncateText(item.action || '-', 18))}</td>
                     <td>
-                      <strong>${truncateText(item.entityLabel || '-', 34)}</strong>
-                      <div class="muted" style="margin-top:4px;">${truncateText(item.entityType || '-', 22)}</div>
+                      <strong>${escapeHtml(truncateText(item.entityLabel || '-', 34))}</strong>
+                      <div class="muted" style="margin-top:4px;">${escapeHtml(truncateText(item.entityType || '-', 22))}</div>
                     </td>
                     <td>
-                      <div>${truncateText(item.description || '-', 80)}</div>
-                      ${metadataText ? `<div class="muted" style="margin-top:4px;">${truncateText(metadataText, 90)}</div>` : ''}
+                      <div>${escapeHtml(truncateText(item.description || '-', 84))}</div>
+                      ${metadataText ? `<div class="muted" style="margin-top:4px;">${escapeHtml(truncateText(metadataText, 100))}</div>` : ''}
                     </td>
-                    <td>${truncateText(item.performedByName || '-', 24)}</td>
+                    <td>${escapeHtml(truncateText(item.performedByName || '-', 24))}</td>
                   </tr>
                 `;
               }).join('')}
@@ -143,14 +126,17 @@ export function createAuditModule(ctx) {
           </table>
         </div>
       </div>
-      ${(state.auditLogs || []).length > 120 ? '<div class="auth-hint" style="margin-top:10px;">Exibindo no máximo 120 registros para manter a tela leve.</div>' : ''}
+
+      <div class="audit-summary-line">
+        <span>Total encontrado: <strong>${rows.length}</strong></span>
+        <span>Exibindo: <strong>${visibleRows.length}</strong></span>
+      </div>
     `;
   }
 
   return {
     log,
     getFilteredLogs,
-    hasActiveAuditFilter,
     renderAuditTable
   };
 }

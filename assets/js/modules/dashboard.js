@@ -21,6 +21,7 @@ export function createDashboardModule(ctx) {
 
   function getLowStockProducts() {
     const threshold = Number(state.settings.lowStockThreshold || 5);
+
     return (state.products || []).filter((item) => {
       return item.status !== 'inativo' && Number(item.quantity || 0) <= threshold;
     });
@@ -64,6 +65,7 @@ export function createDashboardModule(ctx) {
 
   function getTodaySales() {
     const today = new Date();
+
     return (state.sales || []).filter((sale) => {
       const saleDate = getSalesDate(sale.createdAt);
       return saleDate && isSameDay(saleDate, today);
@@ -72,6 +74,7 @@ export function createDashboardModule(ctx) {
 
   function getMonthSales() {
     const today = new Date();
+
     return (state.sales || []).filter((sale) => {
       const saleDate = getSalesDate(sale.createdAt);
       return saleDate
@@ -82,6 +85,7 @@ export function createDashboardModule(ctx) {
 
   function getTodayDeliveries() {
     const today = new Date();
+
     return (state.deliveries || []).filter((item) => {
       const raw = item.scheduledAt?.toDate ? item.scheduledAt.toDate() : new Date(item.scheduledAt || 0);
       return !Number.isNaN(raw.getTime()) && isSameDay(raw, today);
@@ -109,6 +113,7 @@ export function createDashboardModule(ctx) {
       const total = (state.sales || []).reduce((sum, sale) => {
         const saleDate = getSalesDate(sale.createdAt);
         if (!saleDate) return sum;
+
         return saleDate >= day && saleDate < nextDay
           ? sum + Number(sale.total || 0)
           : sum;
@@ -125,18 +130,45 @@ export function createDashboardModule(ctx) {
 
   function renderMiniChart(data) {
     const max = Math.max(...data.map((item) => item.total), 1);
+    const highestIndex = data.findIndex((item) => item.total === max);
+
+    function shortCurrency(value) {
+      const amount = Number(value || 0);
+
+      if (amount >= 1000) {
+        return `R$ ${(amount / 1000).toFixed(1).replace('.', ',')}k`;
+      }
+
+      return amount.toLocaleString('pt-BR', {
+        style: 'currency',
+        currency: 'BRL'
+      });
+    }
 
     return `
-      <div class="mini-chart">
-        ${data.map((item) => {
-          const percent = Math.max(6, (item.total / max) * 100);
+      <div class="dashboard-sales-7d-chart">
+        ${data.map((item, index) => {
+          const height = item.total <= 0 ? 8 : Math.max(12, (item.total / max) * 180);
+          const isHighest = index === highestIndex;
+          const labelValue = shortCurrency(item.total);
+
           return `
-            <div class="mini-chart-col">
-              <div class="mini-chart-value">${currency(item.total)}</div>
-              <div class="mini-chart-bar-wrap">
-                <div class="mini-chart-bar" style="height:${percent}%;"></div>
+            <div class="dashboard-sales-7d-col">
+              <div class="dashboard-sales-7d-value ${isHighest ? 'is-highlight' : ''}">
+                ${labelValue}
               </div>
-              <div class="mini-chart-label">${item.label}</div>
+
+              <div class="dashboard-sales-7d-bar-wrap">
+                <div
+                  class="dashboard-sales-7d-bar ${isHighest ? 'is-highlight' : ''}"
+                  style="height:${height}px;"
+                  title="${labelValue} em ${item.label}"
+                ></div>
+              </div>
+
+              <div class="dashboard-sales-7d-label">
+                ${item.label}
+              </div>
             </div>
           `;
         }).join('')}
@@ -153,17 +185,21 @@ export function createDashboardModule(ctx) {
 
     const overdueReceivables = accounts.reduce((sum, item) => {
       if (!item.dueDate || Number(item.openAmount || 0) <= 0) return sum;
+
       const due = new Date(`${item.dueDate}T00:00:00`);
       const today = new Date();
       today.setHours(0, 0, 0, 0);
+
       return due < today ? sum + Number(item.openAmount || 0) : sum;
     }, 0);
 
     const dueSoonCount = accounts.filter((item) => {
       if (!item.dueDate || Number(item.openAmount || 0) <= 0) return false;
+
       const due = new Date(`${item.dueDate}T00:00:00`);
       const today = new Date();
       today.setHours(0, 0, 0, 0);
+
       const diff = Math.round((due.getTime() - today.getTime()) / 86400000);
       return diff >= 0 && diff <= 3;
     }).length;
@@ -200,6 +236,25 @@ export function createDashboardModule(ctx) {
       .filter((item) => item.diff <= 3)
       .sort((a, b) => a.diff - b.diff)
       .slice(0, limit);
+  }
+
+  function renderLatestSales() {
+    const rows = (state.sales || []).slice(0, 6);
+
+    if (!rows.length) {
+      return '<div class="empty-state">Nenhuma venda registrada.</div>';
+    }
+
+    return `
+      <div class="stack-list slim-list">
+        ${rows.map((sale) => `
+          <div class="list-item">
+            <strong>${escapeHtml(sale.customerName || 'Venda balcão')}</strong>
+            <span>${currency(sale.total)} · ${formatDateTime(sale.createdAt)} · ${escapeHtml(sale.paymentMethod || '-')}</span>
+          </div>
+        `).join('')}
+      </div>
+    `;
   }
 
   function render() {
@@ -249,14 +304,7 @@ export function createDashboardModule(ctx) {
               <h2>Últimas vendas</h2>
               <span class="muted">Resumo em tempo real</span>
             </div>
-            <div class="stack-list slim-list">
-              ${(state.sales || []).slice(0, 6).map((sale) => `
-                <div class="list-item">
-                  <strong>${escapeHtml(sale.customerName || 'Venda balcão')}</strong>
-                  <span>${currency(sale.total)} · ${formatDateTime(sale.createdAt)} · ${escapeHtml(sale.paymentMethod || '-')}</span>
-                </div>
-              `).join('') || '<div class="empty-state">Nenhuma venda registrada.</div>'}
-            </div>
+            ${renderLatestSales()}
           </div>
         </div>
 
@@ -269,8 +317,8 @@ export function createDashboardModule(ctx) {
             <div class="stack-list slim-list">
               ${pendingDeliveries.slice(0, 6).map((item) => `
                 <div class="list-item">
-                  <strong>${escapeHtml(item.clientName || '-')}</strong>
-                  <span>${escapeHtml(item.address || '-')} · ${formatDate(item.scheduledAt)} ${escapeHtml(item.time || '')} · ${escapeHtml(item.status || '-')}</span>
+                  <strong>${escapeHtml(item.customerName || item.clientName || '-')}</strong>
+                  <span>${escapeHtml(item.address || '-')} · ${formatDate(item.scheduledAt)} ${escapeHtml(item.scheduledTime || item.time || '')} · ${escapeHtml(item.status || '-')}</span>
                 </div>
               `).join('') || '<div class="empty-state">Sem atendimentos pendentes.</div>'}
             </div>
@@ -317,7 +365,7 @@ export function createDashboardModule(ctx) {
             <div class="section-header">
               <h2>Contas vencendo</h2>
             </div>
-            ${renderSimpleList(dueSoonList.map((item) => `${item.clientName} · ${currency(item.openAmount || 0)} · ${item.dueDate}`))}
+            ${renderSimpleList(dueSoonList.map((item) => `${item.clientName || 'Cliente'} · ${currency(item.openAmount || 0)} · ${item.dueDate}`))}
           </div>
         </div>
       </div>

@@ -2589,3 +2589,29 @@ table {
 body.theme-light .search-result-item:hover {
   background: rgba(0,0,0,0.03);
 }
+
+.topbar-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.topbar-search input {
+  min-width: 180px;
+}
+
+.hidden {
+  display: none !important;
+}
+
+@media (max-width: 768px) {
+  .topbar-search {
+    width: 100%;
+  }
+
+  .topbar-search input {
+    min-width: 0;
+    width: 100%;
+  }
+}

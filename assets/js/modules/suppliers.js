@@ -61,6 +61,39 @@ export function createSuppliersModule(ctx) {
     form.elements.active.value = String(supplier?.active !== false);
   }
 
+  function openSupplierActions(supplierId) {
+    window.openActionsSheet?.('Ações do fornecedor', [
+      {
+        label: 'Inativar',
+        className: 'btn btn-danger',
+        onClick: async () => {
+          const supplier = (state.suppliers || []).find((item) => item.id === supplierId);
+          if (!supplier) return;
+
+          await updateByPath('suppliers', supplierId, {
+            active: false,
+            deleted: false
+          });
+
+          await auditModule.log({
+            module: 'suppliers',
+            action: 'inactivate',
+            entityType: 'supplier',
+            entityId: supplierId,
+            entityLabel: supplier.name || '',
+            description: 'Fornecedor inativado.'
+          });
+
+          showToast('Fornecedor inativado.', 'success');
+
+          if (state.editingSupplierId === supplierId) {
+            state.editingSupplierId = null;
+          }
+        }
+      }
+    ]);
+  }
+
   function renderSupplierActions(supplier) {
     return `
       <div class="actions-inline-compact">
@@ -72,20 +105,13 @@ export function createSuppliersModule(ctx) {
           aria-label="Editar"
         >✏️</button>
 
-        <details class="actions-menu">
-          <summary
-            class="icon-action-btn"
-            title="Mais ações"
-            aria-label="Mais ações"
-          >⋯</summary>
-          <div class="actions-menu-popover">
-            <button
-              class="btn btn-danger"
-              type="button"
-              data-supplier-inactivate="${supplier.id}"
-            >Inativar</button>
-          </div>
-        </details>
+        <button
+          class="icon-action-btn"
+          type="button"
+          data-supplier-more="${supplier.id}"
+          title="Mais ações"
+          aria-label="Mais ações"
+        >⋯</button>
       </div>
     `;
   }
@@ -138,25 +164,6 @@ export function createSuppliersModule(ctx) {
     }
   }
 
-  async function inactivateSupplier(supplierId) {
-    const supplier = (state.suppliers || []).find((item) => item.id === supplierId);
-    if (!supplier) return;
-
-    await updateByPath('suppliers', supplierId, {
-      active: false,
-      deleted: false
-    });
-
-    await auditModule.log({
-      module: 'suppliers',
-      action: 'inactivate',
-      entityType: 'supplier',
-      entityId: supplierId,
-      entityLabel: supplier.name || '',
-      description: 'Fornecedor inativado.'
-    });
-  }
-
   function bindEvents() {
     const form = tabEls.suppliers.querySelector('#supplier-form');
 
@@ -189,22 +196,9 @@ export function createSuppliersModule(ctx) {
       });
     });
 
-    tabEls.suppliers.querySelectorAll('[data-supplier-inactivate]').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        const confirmed = window.confirm('Inativar este fornecedor?');
-        if (!confirmed) return;
-
-        try {
-          await inactivateSupplier(btn.dataset.supplierInactivate);
-          showToast('Fornecedor inativado.', 'success');
-
-          if (state.editingSupplierId === btn.dataset.supplierInactivate) {
-            state.editingSupplierId = null;
-          }
-        } catch (error) {
-          console.error(error);
-          alert(error.message || 'Erro ao inativar fornecedor.');
-        }
+    tabEls.suppliers.querySelectorAll('[data-supplier-more]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        openSupplierActions(btn.dataset.supplierMore);
       });
     });
   }

@@ -25,6 +25,22 @@ export function createUsersModule(ctx) {
       && state.currentUser.permissions.includes('users');
   }
 
+  function normalizeAccessLevelOptions() {
+    return (ACCESS_LEVELS || []).map((level) => {
+      if (typeof level === 'string') {
+        return {
+          value: level,
+          label: level
+        };
+      }
+
+      return {
+        value: level?.value || '',
+        label: level?.label || level?.value || ''
+      };
+    }).filter((item) => item.value);
+  }
+
   function getFilteredUsers() {
     return (state.users || []).filter((user) => {
       const haystack = [
@@ -348,6 +364,7 @@ export function createUsersModule(ctx) {
     const editing = getEditingUser();
     const rows = getFilteredUsers();
     const summary = getSummary();
+    const accessLevelOptions = normalizeAccessLevelOptions();
 
     tabEls.users.innerHTML = `
       <div class="section-stack">
@@ -420,7 +437,7 @@ export function createUsersModule(ctx) {
 
                   <label>Nível de acesso
                     <select name="accessLevel">
-                      ${ACCESS_LEVELS.map((level) => `<option value="${level.value}">${level.label}</option>`).join('')}
+                      ${accessLevelOptions.map((level) => `<option value="${level.value}">${level.label}</option>`).join('')}
                     </select>
                   </label>
 

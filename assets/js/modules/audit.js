@@ -1,7 +1,7 @@
 export function createAuditModule(ctx) {
   const { state, refs, createDoc, formatDateTime } = ctx;
 
-  async function log({
+  function log({
     module,
     action,
     entityType,
@@ -10,33 +10,30 @@ export function createAuditModule(ctx) {
     description = '',
     metadata = {}
   }) {
-    await createDoc(refs.auditLogs, {
+    return createDoc(refs.auditLogs, {
       module: module || '',
       action: action || '',
       entityType: entityType || '',
       entityId: entityId || '',
       entityLabel,
       description,
+      metadata,
       performedById: state.currentUser?.uid || '',
       performedByName: state.currentUser?.fullName || '',
-      metadata,
       createdAt: new Date()
     });
   }
 
-  function getDateValue(dateLike) {
+  function normalizeDateValue(dateLike) {
     const created = dateLike?.toDate ? dateLike.toDate() : new Date(dateLike || 0);
     if (Number.isNaN(created.getTime())) return '';
     return `${created.getFullYear()}-${String(created.getMonth() + 1).padStart(2, '0')}-${String(created.getDate()).padStart(2, '0')}`;
   }
 
-  function normalizeText(value) {
-    return String(value || '').trim();
-  }
-
   function truncateText(value, max = 90) {
-    const text = normalizeText(value);
-    if (text.length <= max) return text || '-';
+    const text = String(value || '').trim();
+    if (!text) return '-';
+    if (text.length <= max) return text;
     return `${text.slice(0, max).trim()}...`;
   }
 
@@ -45,12 +42,11 @@ export function createAuditModule(ctx) {
       return '';
     }
 
-    const parts = Object.entries(metadata)
+    return Object.entries(metadata)
       .filter(([, value]) => value !== undefined && value !== null && value !== '')
       .slice(0, 4)
-      .map(([key, value]) => `${key}: ${String(value)}`);
-
-    return parts.join(' | ');
+      .map(([key, value]) => `${key}: ${String(value)}`)
+      .join(' | ');
   }
 
   function getFilteredLogs(filters = {}) {
@@ -61,7 +57,7 @@ export function createAuditModule(ctx) {
         const entityTypeValue = String(item.entityType || '');
         const entityLabelValue = String(item.entityLabel || '').toLowerCase();
         const userValue = String(item.performedByName || '').toLowerCase();
-        const dateValue = getDateValue(item.createdAt);
+        const dateValue = normalizeDateValue(item.createdAt);
 
         return (!filters.module || moduleValue === filters.module)
           && (!filters.action || actionValue === filters.action)
@@ -78,57 +74,83 @@ export function createAuditModule(ctx) {
       });
   }
 
-  function renderAuditTable(filters = {}) {
+  function hasActiveAuditFilter(filters = {}) {
+    return Boolean(
+      filters.module
+      || filters.action
+      || filters.entityType
+      || filters.entityLabel
+      || filters.user
+      || filters.dateFrom
+      || filters.dateTo
+    );
+  }
+
+  function renderAuditTable(filters = {}, shouldShow = false) {
+    if (!shouldShow) {
+      return `
+        <div class="empty-state">
+          A auditoria será exibida somente depois de aplicar os filtros.
+        </div>
+      `;
+    }
+
     const rows = getFilteredLogs(filters).slice(0, 120);
 
-    return `
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Data</th>
-              <th>Módulo</th>
-              <th>Ação</th>
-              <th>Registro</th>
-              <th>Resumo</th>
-              <th>Usuário</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${rows.map((item) => {
-              const metadataText = formatMetadata(item.metadata);
-              const summaryParts = [
-                truncateText(item.description || '-', 80),
-                metadataText ? truncateText(metadataText, 80) : ''
-              ].filter(Boolean);
+    if (!rows.length) {
+      return `
+        <div class="empty-state">
+          Nenhum registro encontrado para os filtros informados.
+        </div>
+      `;
+    }
 
-              return `
-                <tr>
-                  <td>${formatDateTime(item.createdAt)}</td>
-                  <td>${normalizeText(item.module) || '-'}</td>
-                  <td>${normalizeText(item.action) || '-'}</td>
-                  <td>
-                    <strong>${truncateText(item.entityLabel || '-', 42)}</strong>
-                    <div class="muted" style="margin-top:4px;">${truncateText(item.entityType || '-', 24)}</div>
-                  </td>
-                  <td>
-                    <div>${summaryParts[0] || '-'}</div>
-                    ${summaryParts[1] ? `<div class="muted" style="margin-top:4px;">${summaryParts[1]}</div>` : ''}
-                  </td>
-                  <td>${truncateText(item.performedByName || '-', 28)}</td>
-                </tr>
-              `;
-            }).join('') || '<tr><td colspan="6">Nenhum registro encontrado.</td></tr>'}
-          </tbody>
-        </table>
+    return `
+      <div class="audit-table-scroll">
+        <div class="table-wrap">
+          <table class="audit-table">
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Módulo</th>
+                <th>Ação</th>
+                <th>Registro</th>
+                <th>Resumo</th>
+                <th>Usuário</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows.map((item) => {
+                const metadataText = formatMetadata(item.metadata);
+                return `
+                  <tr>
+                    <td>${formatDateTime(item.createdAt)}</td>
+                    <td>${truncateText(item.module || '-', 18)}</td>
+                    <td>${truncateText(item.action || '-', 18)}</td>
+                    <td>
+                      <strong>${truncateText(item.entityLabel || '-', 34)}</strong>
+                      <div class="muted" style="margin-top:4px;">${truncateText(item.entityType || '-', 22)}</div>
+                    </td>
+                    <td>
+                      <div>${truncateText(item.description || '-', 80)}</div>
+                      ${metadataText ? `<div class="muted" style="margin-top:4px;">${truncateText(metadataText, 90)}</div>` : ''}
+                    </td>
+                    <td>${truncateText(item.performedByName || '-', 24)}</td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
       </div>
-      ${(state.auditLogs || []).length > 120 ? '<div class="auth-hint" style="margin-top:10px;">Exibindo os 120 registros mais recentes com os filtros atuais.</div>' : ''}
+      ${(state.auditLogs || []).length > 120 ? '<div class="auth-hint" style="margin-top:10px;">Exibindo no máximo 120 registros para manter a tela leve.</div>' : ''}
     `;
   }
 
   return {
     log,
     getFilteredLogs,
+    hasActiveAuditFilter,
     renderAuditTable
   };
 }

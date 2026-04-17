@@ -137,7 +137,7 @@ export function createPayablesModule(ctx) {
           entityType: 'account_payable',
           entityId: createdId,
           entityLabel: payload.description || '',
-          description: 'Conta a pagar criada.'
+          description: 'Conta a pagar cadastrada.'
         });
 
         showToast('Conta a pagar cadastrada.', 'success');
@@ -351,6 +351,19 @@ export function createPayablesModule(ctx) {
     });
   }
 
+  function openPayableActions(payableId) {
+    window.openActionsSheet?.('Ações da conta', [
+      {
+        label: 'Editar',
+        className: 'btn btn-secondary',
+        onClick: async () => {
+          state.editingPayableId = payableId;
+          render();
+        }
+      }
+    ]);
+  }
+
   function renderPayableActions(row) {
     return `
       <div class="actions-inline-compact">
@@ -370,20 +383,13 @@ export function createPayablesModule(ctx) {
           aria-label="Detalhes"
         >👁️</button>
 
-        <details class="actions-menu">
-          <summary
-            class="icon-action-btn"
-            title="Mais ações"
-            aria-label="Mais ações"
-          >⋯</summary>
-          <div class="actions-menu-popover">
-            <button
-              class="btn btn-secondary"
-              type="button"
-              data-payable-edit="${row.id}"
-            >Editar</button>
-          </div>
-        </details>
+        <button
+          class="icon-action-btn"
+          type="button"
+          data-payable-more="${row.id}"
+          title="Mais ações"
+          aria-label="Mais ações"
+        >⋯</button>
       </div>
     `;
   }
@@ -416,13 +422,6 @@ export function createPayablesModule(ctx) {
       render();
     });
 
-    tabEls.payables.querySelectorAll('[data-payable-edit]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        state.editingPayableId = btn.dataset.payableEdit;
-        render();
-      });
-    });
-
     tabEls.payables.querySelectorAll('[data-payable-pay]').forEach((btn) => {
       btn.addEventListener('click', () => {
         openPaymentModal(btn.dataset.payablePay);
@@ -432,6 +431,12 @@ export function createPayablesModule(ctx) {
     tabEls.payables.querySelectorAll('[data-payable-view]').forEach((btn) => {
       btn.addEventListener('click', () => {
         openDetailsModal(btn.dataset.payableView);
+      });
+    });
+
+    tabEls.payables.querySelectorAll('[data-payable-more]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        openPayableActions(btn.dataset.payableMore);
       });
     });
   }

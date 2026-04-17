@@ -1,240 +1,182 @@
-import { showToast } from './ui.js';
+function money(value) {
+  return Number(value || 0).toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL'
+  });
+}
 
-export function createPrintModule(ctx) {
-  const { state } = ctx;
+function esc(value = '') {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
 
-  function escapeHtml(value = '') {
-    return String(value).replace(/[&<>'"]/g, (char) => ({
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      "'": '&#39;',
-      '"': '&quot;'
-    }[char]));
-  }
+function buildReceiptHtml(state, sale) {
+  const width = state.settings?.thermalWidth || '80mm';
+  const compact = Boolean(state.settings?.thermalCompactMode);
+  const storeName = state.settings?.storeName || 'Minha Loja';
+  const address = state.settings?.address || '';
+  const warrantyText = state.settings?.warrantyText || '';
 
-  function getPrintSettings() {
-    return {
-      thermalWidth: state.settings?.thermalWidth || '80mm',
-      compactMode: Boolean(state.settings?.thermalCompactMode),
-      autoPrint: Boolean(state.settings?.thermalAutoPrint)
-    };
-  }
-
-  function formatMoney(value) {
-    return Number(value || 0).toLocaleString('pt-BR', {
-      style: 'currency',
-      currency: 'BRL'
-    });
-  }
-
-  function getThermalCss() {
-    const { thermalWidth, compactMode } = getPrintSettings();
-    const paperWidth = thermalWidth === '58mm' ? '58mm' : '80mm';
-    const baseFont = compactMode ? '11px' : '12px';
-    const titleFont = compactMode ? '14px' : '16px';
-    const padding = compactMode ? '6px' : '8px';
-
-    return `
-      @page {
-        size: ${paperWidth} auto;
-        margin: 0;
-      }
-
-      html, body {
-        margin: 0;
-        padding: 0;
-        background: #ffffff;
-        color: #000000;
-        font-family: Arial, Helvetica, sans-serif;
-        font-size: ${baseFont};
-        line-height: 1.35;
-      }
-
-      body {
-        width: ${paperWidth};
-      }
-
-      .receipt {
-        width: ${paperWidth};
-        padding: ${padding};
-        box-sizing: border-box;
-      }
-
-      .center {
-        text-align: center;
-      }
-
-      .title {
-        font-size: ${titleFont};
-        font-weight: 700;
-        margin-bottom: 4px;
-      }
-
-      .muted {
-        font-size: ${baseFont};
-        margin-bottom: 2px;
-      }
-
-      .divider {
-        border-top: 1px dashed #000;
-        margin: 8px 0;
-      }
-
-      .items {
-        width: 100%;
-      }
-
-      .item {
-        padding: 4px 0;
-        border-bottom: 1px dotted #999;
-      }
-
-      .item-name {
-        font-weight: 700;
-        margin-bottom: 2px;
-        word-break: break-word;
-      }
-
-      .item-meta {
-        display: flex;
-        justify-content: space-between;
-        gap: 8px;
-      }
-
-      .row {
-        display: flex;
-        justify-content: space-between;
-        gap: 8px;
-        padding: 2px 0;
-      }
-
-      .row.total {
-        font-weight: 700;
-        font-size: ${compactMode ? '12px' : '13px'};
-      }
-
-      .footer {
-        margin-top: 8px;
-        text-align: center;
-        word-break: break-word;
-      }
-
-      @media print {
-        body {
-          -webkit-print-color-adjust: exact;
-          print-color-adjust: exact;
-        }
-      }
-    `;
-  }
-
-  function buildReceiptBody(sale) {
-    const itemsHtml = (sale.items || []).map((item) => `
-      <div class="item">
-        <div class="item-name">${escapeHtml(item.name || '')}</div>
-        <div class="item-meta">
-          <span>Qtd: ${Number(item.quantity || 0)}</span>
-          <span>${formatMoney(item.unitPrice || 0)}</span>
-          <span>${formatMoney(item.total || 0)}</span>
-        </div>
+  const itemsHtml = (sale.items || []).map((item) => `
+    <div class="receipt-item">
+      <div class="receipt-item-name">${esc(item.name || '-')}</div>
+      <div class="receipt-item-line">
+        <span>${Number(item.quantity || 0)} x ${money(item.unitPrice || 0)}</span>
+        <strong>${money(item.total || 0)}</strong>
       </div>
-    `).join('');
+    </div>
+  `).join('');
 
-    return `
-      <div class="receipt">
-        <div class="center">
-          <div class="title">${escapeHtml(state.settings?.storeName || 'Minha Loja')}</div>
-          <div class="muted">${escapeHtml(state.settings?.address || '')}</div>
-          <div class="muted">CUPOM NÃO FISCAL</div>
-          <div class="muted">${new Date().toLocaleString('pt-BR')}</div>
-        </div>
-
-        <div class="divider"></div>
-
-        <div class="row">
-          <span>Cliente</span>
-          <strong>${escapeHtml(sale.customerName || 'Balcão')}</strong>
-        </div>
-
-        <div class="divider"></div>
-
-        <div class="items">
-          ${itemsHtml || '<div class="item">Sem itens</div>'}
-        </div>
-
-        <div class="divider"></div>
-
-        <div class="row"><span>Subtotal</span><strong>${formatMoney(sale.subtotal || 0)}</strong></div>
-        <div class="row"><span>Desconto</span><strong>${formatMoney(sale.discount || 0)}</strong></div>
-        <div class="row total"><span>Total</span><strong>${formatMoney(sale.total || 0)}</strong></div>
-        <div class="row"><span>Pagamento</span><strong>${escapeHtml(sale.paymentMethod || '-')}</strong></div>
-        <div class="row"><span>Valor pago</span><strong>${formatMoney(sale.amountPaid || 0)}</strong></div>
-        <div class="row"><span>Troco</span><strong>${formatMoney(sale.change || 0)}</strong></div>
-
-        <div class="divider"></div>
-
-        <div class="footer">
-          ${escapeHtml(state.settings?.warrantyText || '')}
-        </div>
-      </div>
-    `;
-  }
-
-  function buildReceiptHtmlDocument(sale) {
-    return `
-      <!doctype html>
-      <html lang="pt-BR">
+  return `
+    <!DOCTYPE html>
+    <html lang="pt-BR">
       <head>
         <meta charset="utf-8" />
-        <meta name="viewport" content="width=device-width,initial-scale=1" />
         <title>Cupom</title>
         <style>
-          ${getThermalCss()}
+          @page {
+            size: ${width} auto;
+            margin: 0;
+          }
+
+          * {
+            box-sizing: border-box;
+          }
+
+          body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, Helvetica, sans-serif;
+            background: #fff;
+            color: #000;
+          }
+
+          .receipt {
+            width: ${width === '58mm' ? '58mm' : '80mm'};
+            padding: ${compact ? '6px 7px' : '10px 10px'};
+            margin: 0 auto;
+            font-size: ${compact ? '11px' : '12px'};
+            line-height: 1.35;
+          }
+
+          .center {
+            text-align: center;
+          }
+
+          .store-name {
+            font-size: ${compact ? '14px' : '16px'};
+            font-weight: 700;
+            margin-bottom: 2px;
+          }
+
+          .muted {
+            font-size: ${compact ? '10px' : '11px'};
+          }
+
+          .divider {
+            border-top: 1px dashed #000;
+            margin: ${compact ? '6px 0' : '8px 0'};
+          }
+
+          .receipt-line {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+            margin: 2px 0;
+          }
+
+          .receipt-line.total {
+            font-size: ${compact ? '12px' : '13px'};
+            font-weight: 700;
+            margin-top: 6px;
+          }
+
+          .receipt-item {
+            margin: ${compact ? '4px 0' : '6px 0'};
+          }
+
+          .receipt-item-name {
+            font-weight: 700;
+            word-break: break-word;
+          }
+
+          .receipt-item-line {
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+          }
+
+          .footer {
+            margin-top: 8px;
+            text-align: center;
+            font-size: ${compact ? '10px' : '11px'};
+          }
         </style>
       </head>
       <body>
-        ${buildReceiptBody(sale)}
-        <script>
-          window.addEventListener('load', function () {
-            setTimeout(function () {
-              window.focus();
-              window.print();
-            }, 250);
-          });
+        <div class="receipt">
+          <div class="center">
+            <div class="store-name">${esc(storeName)}</div>
+            ${address ? `<div class="muted">${esc(address)}</div>` : ''}
+          </div>
 
-          window.addEventListener('afterprint', function () {
-            setTimeout(function () {
-              window.close();
-            }, 150);
-          });
-        </script>
+          <div class="divider"></div>
+
+          <div class="receipt-line"><span>Cliente</span><strong>${esc(sale.customerName || 'Balcão')}</strong></div>
+          <div class="receipt-line"><span>Pagamento</span><strong>${esc(sale.paymentMethod || '-')}</strong></div>
+
+          <div class="divider"></div>
+
+          ${itemsHtml || '<div class="center">Nenhum item</div>'}
+
+          <div class="divider"></div>
+
+          <div class="receipt-line"><span>Subtotal</span><strong>${money(sale.subtotal || 0)}</strong></div>
+          <div class="receipt-line"><span>Desconto</span><strong>${money(sale.discount || 0)}</strong></div>
+          <div class="receipt-line total"><span>Total</span><strong>${money(sale.total || 0)}</strong></div>
+          <div class="receipt-line"><span>Valor pago</span><strong>${money(sale.amountPaid || 0)}</strong></div>
+          <div class="receipt-line"><span>Troco</span><strong>${money(sale.change || 0)}</strong></div>
+
+          ${warrantyText ? `
+            <div class="divider"></div>
+            <div class="footer">${esc(warrantyText)}</div>
+          ` : ''}
+
+          <div class="divider"></div>
+          <div class="footer">Obrigado pela preferência</div>
+        </div>
       </body>
-      </html>
-    `;
-  }
+    </html>
+  `;
+}
 
+export function createPrintModule({ state }) {
   function printSaleReceipt(sale) {
-    const html = buildReceiptHtmlDocument(sale);
-    const printWindow = window.open('', '_blank', 'width=420,height=800');
+    const html = buildReceiptHtml(state, sale);
+    const win = window.open('', '_blank', 'width=420,height=720');
 
-    if (!printWindow) {
-      showToast('Não foi possível abrir a janela de impressão.', 'error');
+    if (!win) {
+      alert('O navegador bloqueou a abertura da impressão.');
       return;
     }
 
-    printWindow.document.open();
-    printWindow.document.write(html);
-    printWindow.document.close();
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
 
-    if (!getPrintSettings().autoPrint) {
-      showToast('Cupom aberto em modo pronto para impressão.', 'success');
-    }
+    const shouldAutoPrint = Boolean(state.settings?.thermalAutoPrint);
+
+    win.onload = () => {
+      if (shouldAutoPrint) {
+        win.focus();
+        win.print();
+      }
+    };
   }
 
   return {
-    buildReceiptHtml: buildReceiptHtmlDocument,
-    printSaleReceipt,
-    getPrintSettings
+    printSaleReceipt
   };
 }

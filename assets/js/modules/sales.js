@@ -885,8 +885,11 @@ export function createSalesModule(ctx) {
     if (keyboardBound) return;
     keyboardBound = true;
 
-    document.addEventListener('keydown', async (event) => {
+    window.addEventListener('keydown', async (event) => {
       if (state.activeTab !== 'sales') return;
+
+      const tag = String(event.target?.tagName || '').toLowerCase();
+      const isTypingField = tag === 'input' || tag === 'textarea' || tag === 'select';
 
       if (event.key === 'F2') {
         event.preventDefault();
@@ -909,7 +912,14 @@ export function createSalesModule(ctx) {
       if (event.key === 'Escape') {
         closeScannerModal();
       }
-    });
+
+      if (!isTypingField && event.key === 'Enter') {
+        const active = document.activeElement;
+        if (active?.id === 'sale-product-search') {
+          event.preventDefault();
+        }
+      }
+    }, true);
   }
 
   function renderBarcodeActionButton() {
@@ -978,6 +988,10 @@ export function createSalesModule(ctx) {
                 ${mobile
                   ? 'No celular, toque no ícone ao lado do campo para abrir a câmera.'
                   : 'No computador, toque no ícone para focar o campo e use a leitora USB.'}
+              </div>
+
+              <div class="auth-hint" style="margin-top:8px;">
+                Atalhos: F2 pesquisar · F4 limpar carrinho · F9 finalizar venda · Esc fechar leitura
               </div>
 
               <div class="form-actions" style="margin-top:12px;">

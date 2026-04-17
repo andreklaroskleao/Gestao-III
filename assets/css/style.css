@@ -2313,3 +2313,19 @@ body.theme-light .actions-sheet {
     font-size: 0.72rem;
   }
 }
+
+.audit-table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+.audit-table {
+  min-width: 980px;
+}
+
+.audit-table th,
+.audit-table td {
+  vertical-align: top;
+}

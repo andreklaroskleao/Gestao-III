@@ -30,7 +30,6 @@ export function createPurchasesModule(ctx) {
     return getRows().filter((item) => {
       const supplier = String(item.supplierName || '').toLowerCase();
       const status = String(item.status || '');
-
       const receivedDate = normalizeDate(item.receivedDate || item.receivedAt);
 
       return (!filters.supplier || supplier.includes(filters.supplier.toLowerCase()))
@@ -296,6 +295,19 @@ export function createPurchasesModule(ctx) {
     });
   }
 
+  function openPurchaseActions(purchaseId) {
+    window.openActionsSheet?.('Ações da compra', [
+      {
+        label: 'Editar',
+        className: 'btn btn-secondary',
+        onClick: async () => {
+          state.editingPurchaseId = purchaseId;
+          render();
+        }
+      }
+    ]);
+  }
+
   function renderPurchaseActions(row) {
     return `
       <div class="actions-inline-compact">
@@ -315,20 +327,13 @@ export function createPurchasesModule(ctx) {
           aria-label="Detalhes"
         >👁️</button>
 
-        <details class="actions-menu">
-          <summary
-            class="icon-action-btn"
-            title="Mais ações"
-            aria-label="Mais ações"
-          >⋯</summary>
-          <div class="actions-menu-popover">
-            <button
-              class="btn btn-secondary"
-              type="button"
-              data-purchase-edit="${row.id}"
-            >Editar</button>
-          </div>
-        </details>
+        <button
+          class="icon-action-btn"
+          type="button"
+          data-purchase-more="${row.id}"
+          title="Mais ações"
+          aria-label="Mais ações"
+        >⋯</button>
       </div>
     `;
   }
@@ -361,13 +366,6 @@ export function createPurchasesModule(ctx) {
       render();
     });
 
-    tabEls.purchases.querySelectorAll('[data-purchase-edit]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        state.editingPurchaseId = btn.dataset.purchaseEdit;
-        render();
-      });
-    });
-
     tabEls.purchases.querySelectorAll('[data-purchase-receive]').forEach((btn) => {
       btn.addEventListener('click', () => {
         receivePurchase(btn.dataset.purchaseReceive);
@@ -377,6 +375,12 @@ export function createPurchasesModule(ctx) {
     tabEls.purchases.querySelectorAll('[data-purchase-view]').forEach((btn) => {
       btn.addEventListener('click', () => {
         openDetailsModal(btn.dataset.purchaseView);
+      });
+    });
+
+    tabEls.purchases.querySelectorAll('[data-purchase-more]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        openPurchaseActions(btn.dataset.purchaseMore);
       });
     });
   }

@@ -23,7 +23,7 @@
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" defer></script>
   </head>
   <body>
-    <div id="login-screen" class="screen active">
+    <section id="login-screen" class="screen active">
       <div class="auth-shell">
         <div class="auth-card">
           <div class="auth-brand">
@@ -53,9 +53,9 @@
           </form>
         </div>
       </div>
-    </div>
+    </section>
 
-    <div id="app-screen" class="screen">
+    <section id="app-screen" class="screen">
       <div class="app-shell">
         <aside class="sidebar">
           <div class="sidebar-top">
@@ -64,7 +64,12 @@
               <span>Painel operacional</span>
             </div>
 
-            <button id="sidebar-toggle" class="icon-btn desktop-only-inline" type="button" aria-label="Alternar menu">
+            <button
+              id="sidebar-toggle"
+              class="icon-btn desktop-only-inline"
+              type="button"
+              aria-label="Alternar menu"
+            >
               ☰
             </button>
           </div>
@@ -87,7 +92,12 @@
         <div class="main-shell">
           <header class="topbar">
             <div class="topbar-left">
-              <button id="mobile-sidebar-toggle" class="icon-btn mobile-only-inline" type="button" aria-label="Abrir menu">
+              <button
+                id="mobile-sidebar-toggle"
+                class="icon-btn mobile-only-inline"
+                type="button"
+                aria-label="Abrir menu"
+              >
                 ☰
               </button>
 
@@ -145,7 +155,7 @@
           </main>
         </div>
       </div>
-    </div>
+    </section>
 
     <div id="modal-root"></div>
     <div id="toast-root"></div>

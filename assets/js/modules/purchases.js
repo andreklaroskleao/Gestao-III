@@ -25,7 +25,7 @@ export function createPurchasesModule(ctx) {
   let isSavingPurchase = false;
 
   function getRows() {
-    return state.purchases || [];
+    return (state.purchases || []).filter((item) => item.deleted !== true);
   }
 
   function getFilteredRows() {
@@ -113,7 +113,9 @@ export function createPurchasesModule(ctx) {
   async function ensurePayableForPurchase(purchase) {
     if (!purchase || purchase.paymentCondition === 'À vista') return;
 
-    const existing = (state.accountsPayable || []).find((item) => item.sourcePurchaseId === purchase.id);
+    const existing = (state.accountsPayable || []).find(
+      (item) => item.deleted !== true && item.sourcePurchaseId === purchase.id
+    );
     if (existing) return;
 
     const payload = buildPayablePayload(purchase);
@@ -139,6 +141,11 @@ export function createPurchasesModule(ctx) {
 
       payload.totalAmount = toNumber(payload.totalAmount);
       payload.deleted = false;
+
+      if (!payload.supplierName || !payload.description) {
+        alert('Informe fornecedor e descrição.');
+        return;
+      }
 
       if (state.editingPurchaseId) {
         const current = getEditingPurchase();
@@ -258,13 +265,15 @@ export function createPurchasesModule(ctx) {
       modalRoot.innerHTML = '';
     };
 
-    modalRoot.querySelector('#purchase-details-modal-close').addEventListener('click', closeModal);
-    modalRoot.querySelector('#purchase-details-modal-backdrop').addEventListener('click', (event) => {
+    modalRoot.querySelector('#purchase-details-modal-close')?.addEventListener('click', closeModal);
+    modalRoot.querySelector('#purchase-details-modal-backdrop')?.addEventListener('click', (event) => {
       if (event.target.id === 'purchase-details-modal-backdrop') closeModal();
     });
   }
 
   function openPurchaseActions(purchaseId) {
+    const purchase = getRows().find((item) => item.id === purchaseId);
+
     window.openActionsSheet?.('Ações da compra', [
       {
         label: 'Editar',
@@ -272,6 +281,39 @@ export function createPurchasesModule(ctx) {
         onClick: async () => {
           state.editingPurchaseId = purchaseId;
           render();
+        }
+      },
+      {
+        label: 'Excluir',
+        className: 'btn btn-danger',
+        onClick: async () => {
+          if (!purchase) return;
+
+          window.openConfirmDeleteModal?.({
+            title: 'Excluir compra',
+            message: 'Deseja realmente excluir esta compra?',
+            onConfirm: async () => {
+              await updateByPath('purchases', purchaseId, {
+                deleted: true,
+                status: 'Cancelada'
+              });
+
+              await auditModule.log({
+                module: 'purchases',
+                action: 'delete',
+                entityType: 'purchase',
+                entityId: purchaseId,
+                entityLabel: purchase.description || '',
+                description: 'Compra excluída logicamente.'
+              });
+
+              showToast('Compra excluída.', 'success');
+
+              if (state.editingPurchaseId === purchaseId) {
+                state.editingPurchaseId = null;
+              }
+            }
+          });
         }
       }
     ]);
@@ -371,7 +413,7 @@ export function createPurchasesModule(ctx) {
                     <input name="supplierName" list="purchase-suppliers-datalist" required />
                     <datalist id="purchase-suppliers-datalist">
                       ${(state.suppliers || [])
-                        .filter((item) => item.active !== false)
+                        .filter((item) => item.deleted !== true && item.active !== false)
                         .map((item) => `<option value="${escapeHtml(item.name || '')}"></option>`)
                         .join('')}
                     </datalist>

@@ -1,4 +1,4 @@
-import { escapeHtml, renderBlocked, showToast } from './ui.js';
+import { escapeHtml, renderBlocked, showToast, bindAsyncButton } from './ui.js';
 
 export function createClientsTabModule(ctx) {
   const {
@@ -6,7 +6,8 @@ export function createClientsTabModule(ctx) {
     tabEls,
     clientsModule,
     accountsModule,
-    hasPermission
+    hasPermission,
+    updateByPath
   } = ctx;
 
   let filters = {
@@ -14,76 +15,135 @@ export function createClientsTabModule(ctx) {
     status: ''
   };
 
+  function getRows() {
+    return (state.clients || []).filter((item) => item.deleted !== true);
+  }
+
   function getFilteredClients() {
-    return (state.clients || []).filter((client) => {
+    return getRows().filter((item) => {
       const haystack = [
-        client.name,
-        client.phone,
-        client.email,
-        client.address
+        item.name,
+        item.phone,
+        item.email,
+        item.document,
+        item.address
       ].join(' ').toLowerCase();
 
-      const activeStatus = client.active === false ? 'inativo' : 'ativo';
+      const status = item.active === false ? 'inativo' : 'ativo';
 
       return (!filters.term || haystack.includes(filters.term.toLowerCase()))
-        && (!filters.status || activeStatus === filters.status);
+        && (!filters.status || status === filters.status);
     });
   }
 
   function getEditingClient() {
-    return (state.clients || []).find((item) => item.id === state.editingClientId) || null;
-  }
-
-  function fillForm(form, client) {
-    if (!form) return;
-
-    form.elements.name.value = client?.name || '';
-    form.elements.phone.value = client?.phone || '';
-    form.elements.address.value = client?.address || '';
-    form.elements.email.value = client?.email || '';
-    form.elements.notes.value = client?.notes || '';
-    form.elements.active.value = String(client?.active !== false);
+    return getRows().find((item) => item.id === state.editingClientId) || null;
   }
 
   function getSummary() {
-    const clients = state.clients || [];
+    const rows = getRows();
+
     return {
-      total: clients.length,
-      active: clients.filter((item) => item.active !== false).length,
-      inactive: clients.filter((item) => item.active === false).length,
-      filtered: getFilteredClients().length
+      total: rows.length,
+      active: rows.filter((item) => item.active !== false).length,
+      inactive: rows.filter((item) => item.active === false).length,
+      receivables: (state.accountsReceivable || []).reduce((sum, item) => sum + Number(item.openAmount || 0), 0)
     };
   }
 
-  function renderHistory(clientId) {
-    const historyHost = tabEls.clients.querySelector('#client-history-host');
-    if (!historyHost) return;
-    historyHost.innerHTML = clientsModule.renderClientHistory(clientId);
-  }
-
   function openClientActions(clientId) {
+    const client = getRows().find((item) => item.id === clientId);
+    if (!client) return;
+
+    if (client.active === false) {
+      window.openActionsSheet?.('Ações do cliente', [
+        {
+          label: 'Reativar',
+          className: 'btn btn-secondary',
+          onClick: async () => {
+            await updateByPath('clients', clientId, {
+              active: true,
+              deleted: false
+            });
+
+            showToast('Cliente reativado.', 'success');
+
+            if (state.editingClientId === clientId) {
+              state.editingClientId = null;
+            }
+          }
+        },
+        {
+          label: 'Excluir',
+          className: 'btn btn-danger',
+          onClick: async () => {
+            window.openConfirmDeleteModal?.({
+              title: 'Excluir cliente',
+              message: 'Deseja realmente excluir este cliente? Ele deixará de aparecer nas listagens.',
+              onConfirm: async () => {
+                await updateByPath('clients', clientId, {
+                  active: false,
+                  deleted: true
+                });
+
+                showToast('Cliente excluído.', 'success');
+
+                if (state.editingClientId === clientId) {
+                  state.editingClientId = null;
+                }
+              }
+            });
+          }
+        }
+      ]);
+      return;
+    }
+
     window.openActionsSheet?.('Ações do cliente', [
       {
         label: 'Inativar',
-        className: 'btn btn-danger',
+        className: 'btn btn-secondary',
         onClick: async () => {
           await clientsModule.inactivateClient(clientId);
           showToast('Cliente inativado.', 'success');
+
           if (state.editingClientId === clientId) {
             state.editingClientId = null;
           }
+        }
+      },
+      {
+        label: 'Excluir',
+        className: 'btn btn-danger',
+        onClick: async () => {
+          window.openConfirmDeleteModal?.({
+            title: 'Excluir cliente',
+            message: 'Deseja realmente excluir este cliente? Ele deixará de aparecer nas listagens.',
+            onConfirm: async () => {
+              await updateByPath('clients', clientId, {
+                active: false,
+                deleted: true
+              });
+
+              showToast('Cliente excluído.', 'success');
+
+              if (state.editingClientId === clientId) {
+                state.editingClientId = null;
+              }
+            }
+          });
         }
       }
     ]);
   }
 
-  function renderClientActions(client) {
+  function renderClientActions(row) {
     return `
       <div class="actions-inline-compact">
         <button
           class="icon-action-btn"
           type="button"
-          data-client-edit="${client.id}"
+          data-client-edit="${row.id}"
           title="Editar"
           aria-label="Editar"
         >✏️</button>
@@ -91,15 +151,15 @@ export function createClientsTabModule(ctx) {
         <button
           class="icon-action-btn info"
           type="button"
-          data-client-history="${client.id}"
-          title="Histórico"
-          aria-label="Histórico"
-        >👁️</button>
+          data-client-account="${row.id}"
+          title="Contas"
+          aria-label="Contas"
+        >💳</button>
 
         <button
           class="icon-action-btn"
           type="button"
-          data-client-more="${client.id}"
+          data-client-more="${row.id}"
           title="Mais ações"
           aria-label="Mais ações"
         >⋯</button>
@@ -108,51 +168,19 @@ export function createClientsTabModule(ctx) {
   }
 
   function bindEvents() {
-    const form = tabEls.clients.querySelector('#client-form');
-
-    form.addEventListener('submit', async (event) => {
-      event.preventDefault();
-
-      const payload = Object.fromEntries(new FormData(form).entries());
-      payload.active = payload.active === 'true';
-
-      try {
-        if (state.editingClientId) {
-          await clientsModule.updateClient(state.editingClientId, payload);
-          state.editingClientId = null;
-          showToast('Cliente atualizado.', 'success');
-        } else {
-          await clientsModule.createClient(payload);
-          showToast('Cliente cadastrado.', 'success');
-        }
-
-        form.reset();
-        render();
-      } catch (error) {
-        console.error(error);
-        alert(error.message || 'Erro ao salvar cliente.');
-      }
-    });
-
-    tabEls.clients.querySelector('#client-reset-btn').addEventListener('click', () => {
-      state.editingClientId = null;
-      form.reset();
+    tabEls.clients.querySelector('#client-filter-apply')?.addEventListener('click', () => {
+      filters.term = tabEls.clients.querySelector('#client-filter-term')?.value || '';
+      filters.status = tabEls.clients.querySelector('#client-filter-status')?.value || '';
       render();
     });
 
-    tabEls.clients.querySelector('#client-filter-apply').addEventListener('click', () => {
-      filters.term = tabEls.clients.querySelector('#client-filter-term').value || '';
-      filters.status = tabEls.clients.querySelector('#client-filter-status').value || '';
-      render();
-    });
-
-    tabEls.clients.querySelector('#client-filter-clear').addEventListener('click', () => {
+    bindAsyncButton(tabEls.clients.querySelector('#client-filter-clear'), async () => {
       filters = {
         term: '',
         status: ''
       };
       render();
-    });
+    }, { busyLabel: 'Limpando...' });
 
     tabEls.clients.querySelectorAll('[data-client-edit]').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -161,9 +189,9 @@ export function createClientsTabModule(ctx) {
       });
     });
 
-    tabEls.clients.querySelectorAll('[data-client-history]').forEach((btn) => {
+    tabEls.clients.querySelectorAll('[data-client-account]').forEach((btn) => {
       btn.addEventListener('click', () => {
-        renderHistory(btn.dataset.clientHistory);
+        accountsModule.openClientAccountsModal?.(btn.dataset.clientAccount);
       });
     });
 
@@ -180,178 +208,78 @@ export function createClientsTabModule(ctx) {
       return;
     }
 
-    const editing = getEditingClient();
     const rows = getFilteredClients();
     const summary = getSummary();
 
     tabEls.clients.innerHTML = `
       <div class="section-stack">
         <div class="cards-grid">
-          <div class="metric-card">
-            <span>Total de clientes</span>
-            <strong>${summary.total}</strong>
-          </div>
-          <div class="metric-card">
-            <span>Ativos</span>
-            <strong>${summary.active}</strong>
-          </div>
-          <div class="metric-card">
-            <span>Inativos</span>
-            <strong>${summary.inactive}</strong>
-          </div>
-          <div class="metric-card">
-            <span>Filtrados</span>
-            <strong>${summary.filtered}</strong>
-          </div>
+          <div class="metric-card"><span>Total de clientes</span><strong>${summary.total}</strong></div>
+          <div class="metric-card"><span>Ativos</span><strong>${summary.active}</strong></div>
+          <div class="metric-card"><span>Inativos</span><strong>${summary.inactive}</strong></div>
+          <div class="metric-card"><span>Em aberto</span><strong>${Number(summary.receivables || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</strong></div>
         </div>
 
-        <div class="users-layout">
+        <div class="section-stack">
           <div class="panel">
+            ${clientsModule.renderClientForm?.(state.editingClientId) || ''}
+          </div>
+
+          <div class="table-card">
             <div class="section-header">
-              <h2>${editing ? 'Editar cliente' : 'Cadastrar cliente'}</h2>
-              <span class="muted">${editing ? 'Atualize os dados do cliente.' : 'Cadastro rápido e organizado.'}</span>
+              <h2>Clientes</h2>
+              <span class="muted">${rows.length} resultado(s)</span>
             </div>
 
-            <form id="client-form" class="form-grid mobile-optimized">
-              <div class="form-section" style="grid-column:1 / -1;">
-                <div class="form-section-title">
-                  <h3>1. Identificação</h3>
-                  <span>Dados principais</span>
-                </div>
-                <div class="soft-divider"></div>
+            <div class="search-row" style="margin-bottom:14px;">
+              <input
+                id="client-filter-term"
+                placeholder="Buscar por nome, telefone, e-mail, documento ou endereço"
+                value="${escapeHtml(filters.term)}"
+              />
 
-                <div class="form-grid">
-                  <label>Nome
-                    <input name="name" required />
-                  </label>
+              <select id="client-filter-status">
+                <option value="">Todos os status</option>
+                <option value="ativo" ${filters.status === 'ativo' ? 'selected' : ''}>Ativo</option>
+                <option value="inativo" ${filters.status === 'inativo' ? 'selected' : ''}>Inativo</option>
+              </select>
 
-                  <label>Telefone
-                    <input name="phone" />
-                  </label>
+              <button class="btn btn-secondary" type="button" id="client-filter-apply">Filtrar</button>
+              <button class="btn btn-secondary" type="button" id="client-filter-clear">Limpar</button>
+            </div>
 
-                  <label>Endereço
-                    <input name="address" />
-                  </label>
-
-                  <label>E-mail
-                    <input name="email" type="email" />
-                  </label>
-
-                  <label>Status
-                    <select name="active">
-                      <option value="true">Ativo</option>
-                      <option value="false">Inativo</option>
-                    </select>
-                  </label>
-                </div>
-              </div>
-
-              <div class="form-section" style="grid-column:1 / -1;">
-                <div class="form-section-title">
-                  <h3>2. Observações</h3>
-                  <span>Anotações gerais</span>
-                </div>
-                <div class="soft-divider"></div>
-
-                <label style="grid-column:1 / -1;">
-                  Observações
-                  <textarea name="notes"></textarea>
-                </label>
-              </div>
-
-              <div class="form-actions" style="grid-column:1 / -1;">
-                <button class="btn btn-primary" type="submit">${editing ? 'Salvar cliente' : 'Cadastrar cliente'}</button>
-                <button class="btn btn-secondary" type="button" id="client-reset-btn">Limpar</button>
-              </div>
-            </form>
-          </div>
-
-          <div class="section-stack">
-            <div class="table-card">
-              <div class="section-header">
-                <h2>Clientes</h2>
-                <span class="muted">${rows.length} resultado(s)</span>
-              </div>
-
-              <div class="search-row" style="margin-bottom:14px;">
-                <input
-                  id="client-filter-term"
-                  placeholder="Buscar por nome, telefone, e-mail ou endereço"
-                  value="${escapeHtml(filters.term)}"
-                />
-
-                <select id="client-filter-status">
-                  <option value="">Todos</option>
-                  <option value="ativo" ${filters.status === 'ativo' ? 'selected' : ''}>Ativo</option>
-                  <option value="inativo" ${filters.status === 'inativo' ? 'selected' : ''}>Inativo</option>
-                </select>
-
-                <button class="btn btn-secondary" type="button" id="client-filter-apply">Filtrar</button>
-                <button class="btn btn-secondary" type="button" id="client-filter-clear">Limpar</button>
-              </div>
-
-              <div class="table-wrap">
-                <table>
-                  <thead>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Nome</th>
+                    <th>Telefone</th>
+                    <th>E-mail</th>
+                    <th>Documento</th>
+                    <th>Status</th>
+                    <th>Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${rows.map((row) => `
                     <tr>
-                      <th>Nome</th>
-                      <th>Telefone</th>
-                      <th>E-mail</th>
-                      <th>Status</th>
-                      <th>Ações</th>
+                      <td>${escapeHtml(row.name || '-')}</td>
+                      <td>${escapeHtml(row.phone || '-')}</td>
+                      <td>${escapeHtml(row.email || '-')}</td>
+                      <td>${escapeHtml(row.document || '-')}</td>
+                      <td>${row.active === false ? '<span class="tag warning">Inativo</span>' : '<span class="tag success">Ativo</span>'}</td>
+                      <td>${renderClientActions(row)}</td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    ${rows.map((client) => `
-                      <tr>
-                        <td>${escapeHtml(client.name || '-')}</td>
-                        <td>${escapeHtml(client.phone || '-')}</td>
-                        <td>${escapeHtml(client.email || '-')}</td>
-                        <td>
-                          <span class="tag ${client.active === false ? 'warning' : 'success'}">
-                            ${client.active === false ? 'Inativo' : 'Ativo'}
-                          </span>
-                        </td>
-                        <td>${renderClientActions(client)}</td>
-                      </tr>
-                    `).join('') || '<tr><td colspan="5">Nenhum cliente encontrado.</td></tr>'}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <div class="table-card">
-              <div class="section-header">
-                <h2>Histórico do cliente</h2>
-              </div>
-
-              <div id="client-history-host">
-                <div class="empty-state">Selecione um cliente para visualizar o histórico.</div>
-              </div>
+                  `).join('') || '<tr><td colspan="6">Nenhum cliente encontrado.</td></tr>'}
+                </tbody>
+              </table>
             </div>
           </div>
-        </div>
-
-        <div class="table-card">
-          <div class="section-header">
-            <h2>Contas do cliente</h2>
-            <span class="muted">Financeiro vinculado</span>
-          </div>
-
-          <div id="accounts-module-host"></div>
         </div>
       </div>
     `;
 
-    const form = tabEls.clients.querySelector('#client-form');
-    fillForm(form, editing);
     bindEvents();
-
-    const accountsHost = tabEls.clients.querySelector('#accounts-module-host');
-    if (accountsHost) {
-      accountsHost.innerHTML = accountsModule.renderEmbedded();
-      accountsModule.bindEmbeddedEvents(accountsHost);
-    }
   }
 
   return {

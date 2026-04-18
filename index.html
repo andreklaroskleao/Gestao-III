@@ -69,23 +69,67 @@
               class="icon-btn desktop-only-inline"
               type="button"
               aria-label="Alternar menu"
+              title="Alternar menu"
             >
               ☰
             </button>
           </div>
 
           <nav id="main-nav" class="nav-list">
-            <button class="nav-item active" data-tab="dashboard" type="button">Dashboard</button>
-            <button class="nav-item" data-tab="sales" type="button">Vendas</button>
-            <button class="nav-item" data-tab="products" type="button">Produtos</button>
-            <button class="nav-item" data-tab="reports" type="button">Relatórios</button>
-            <button class="nav-item" data-tab="deliveries" type="button">Tele-entregas</button>
-            <button class="nav-item" data-tab="clients" type="button">Clientes</button>
-            <button class="nav-item" data-tab="suppliers" type="button">Fornecedores</button>
-            <button class="nav-item" data-tab="purchases" type="button">Compras</button>
-            <button class="nav-item" data-tab="payables" type="button">Contas a pagar</button>
-            <button class="nav-item" data-tab="users" type="button">Usuários</button>
-            <button class="nav-item" data-tab="settings" type="button">Configurações</button>
+            <button class="nav-item active" data-tab="dashboard" type="button">
+              <span class="nav-item-icon">📊</span>
+              <span class="nav-item-label">Dashboard</span>
+            </button>
+
+            <button class="nav-item" data-tab="sales" type="button">
+              <span class="nav-item-icon">🛒</span>
+              <span class="nav-item-label">Vendas</span>
+            </button>
+
+            <button class="nav-item" data-tab="products" type="button">
+              <span class="nav-item-icon">📦</span>
+              <span class="nav-item-label">Produtos</span>
+            </button>
+
+            <button class="nav-item" data-tab="reports" type="button">
+              <span class="nav-item-icon">📈</span>
+              <span class="nav-item-label">Relatórios</span>
+            </button>
+
+            <button class="nav-item" data-tab="deliveries" type="button">
+              <span class="nav-item-icon">🚚</span>
+              <span class="nav-item-label">Tele-entregas</span>
+            </button>
+
+            <button class="nav-item" data-tab="clients" type="button">
+              <span class="nav-item-icon">👥</span>
+              <span class="nav-item-label">Clientes</span>
+            </button>
+
+            <button class="nav-item" data-tab="suppliers" type="button">
+              <span class="nav-item-icon">🏭</span>
+              <span class="nav-item-label">Fornecedores</span>
+            </button>
+
+            <button class="nav-item" data-tab="purchases" type="button">
+              <span class="nav-item-icon">🧾</span>
+              <span class="nav-item-label">Compras</span>
+            </button>
+
+            <button class="nav-item" data-tab="payables" type="button">
+              <span class="nav-item-icon">💸</span>
+              <span class="nav-item-label">Contas a pagar</span>
+            </button>
+
+            <button class="nav-item" data-tab="users" type="button">
+              <span class="nav-item-icon">🔐</span>
+              <span class="nav-item-label">Usuários</span>
+            </button>
+
+            <button class="nav-item" data-tab="settings" type="button">
+              <span class="nav-item-icon">⚙️</span>
+              <span class="nav-item-label">Configurações</span>
+            </button>
           </nav>
         </aside>
 
@@ -97,6 +141,7 @@
                 class="icon-btn mobile-only-inline"
                 type="button"
                 aria-label="Abrir menu"
+                title="Abrir menu"
               >
                 ☰
               </button>
@@ -120,7 +165,7 @@
               </button>
 
               <div class="alerts-wrapper">
-                <button id="stock-alert-btn" class="icon-btn" type="button" aria-label="Alertas">
+                <button id="stock-alert-btn" class="icon-btn" type="button" aria-label="Alertas" title="Alertas">
                   🔔
                   <span id="stock-alert-count" class="badge-counter">0</span>
                 </button>

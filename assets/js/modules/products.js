@@ -37,8 +37,12 @@ export function createProductsModule(ctx) {
       || window.matchMedia('(max-width: 768px)').matches;
   }
 
+  function getRows() {
+    return (state.products || []).filter((item) => item.deleted !== true);
+  }
+
   function getFilteredProducts() {
-    return (state.products || []).filter((product) => {
+    return getRows().filter((product) => {
       const haystack = [
         product.name,
         product.barcode,
@@ -54,14 +58,19 @@ export function createProductsModule(ctx) {
   }
 
   function getEditingProduct() {
-    return (state.products || []).find((item) => item.id === state.editingProductId) || null;
+    return getRows().find((item) => item.id === state.editingProductId) || null;
   }
 
   function getProductSummary() {
-    const allProducts = state.products || [];
+    const allProducts = getRows();
     const activeProducts = allProducts.filter((item) => item.status !== 'inativo');
-    const lowStockCount = activeProducts.filter((item) => Number(item.quantity || 0) <= Number(state.settings?.lowStockThreshold || 5)).length;
-    const inventoryValue = activeProducts.reduce((sum, item) => sum + (Number(item.quantity || 0) * Number(item.costPrice || 0)), 0);
+    const lowStockCount = activeProducts.filter(
+      (item) => Number(item.quantity || 0) <= Number(state.settings?.lowStockThreshold || 5)
+    ).length;
+    const inventoryValue = activeProducts.reduce(
+      (sum, item) => sum + (Number(item.quantity || 0) * Number(item.costPrice || 0)),
+      0
+    );
 
     return {
       totalCount: allProducts.length,
@@ -85,8 +94,13 @@ export function createProductsModule(ctx) {
       payload.status = payload.status || 'ativo';
       payload.deleted = false;
 
+      if (!payload.name) {
+        alert('Informe o nome do produto.');
+        return;
+      }
+
       if (state.editingProductId) {
-        const current = state.products.find((item) => item.id === state.editingProductId);
+        const current = getEditingProduct();
 
         await updateByPath('products', state.editingProductId, payload);
 
@@ -161,11 +175,10 @@ export function createProductsModule(ctx) {
     };
   }
 
-  function setScannerStatus(message, type = 'info') {
+  function setScannerStatus(message) {
     const { status } = getScannerElements();
     if (!status) return;
     status.textContent = message;
-    status.dataset.type = type;
   }
 
   function openBarcodeScannerModal() {
@@ -195,9 +208,9 @@ export function createProductsModule(ctx) {
       closeBarcodeScannerModal();
     };
 
-    modalRoot.querySelector('#product-barcode-modal-close').addEventListener('click', closeModal);
-    modalRoot.querySelector('#product-barcode-stop-btn').addEventListener('click', closeModal);
-    modalRoot.querySelector('#product-barcode-modal-backdrop').addEventListener('click', (event) => {
+    modalRoot.querySelector('#product-barcode-modal-close')?.addEventListener('click', closeModal);
+    modalRoot.querySelector('#product-barcode-stop-btn')?.addEventListener('click', closeModal);
+    modalRoot.querySelector('#product-barcode-modal-backdrop')?.addEventListener('click', (event) => {
       if (event.target.id === 'product-barcode-modal-backdrop') {
         closeModal();
       }
@@ -235,7 +248,7 @@ export function createProductsModule(ctx) {
   async function startBarcodeScanner() {
     if (scannerRunning) return;
 
-    setScannerStatus('Abrindo câmera traseira...', 'info');
+    setScannerStatus('Abrindo câmera traseira...');
     stopBarcodeScanner();
 
     try {
@@ -267,9 +280,7 @@ export function createProductsModule(ctx) {
     }
 
     scannerStreamRef = await navigator.mediaDevices.getUserMedia({
-      video: {
-        facingMode: { ideal: 'environment' }
-      },
+      video: { facingMode: { ideal: 'environment' } },
       audio: false
     });
 
@@ -281,7 +292,7 @@ export function createProductsModule(ctx) {
     });
 
     scannerRunning = true;
-    setScannerStatus('Aponte a câmera para o código de barras do produto.', 'info');
+    setScannerStatus('Aponte a câmera para o código de barras do produto.');
 
     scannerTimer = window.setInterval(async () => {
       try {
@@ -311,13 +322,11 @@ export function createProductsModule(ctx) {
     scannerReader = new ZXingLib.BrowserMultiFormatReader();
 
     scannerRunning = true;
-    setScannerStatus('Aponte a câmera para o código de barras do produto.', 'info');
+    setScannerStatus('Aponte a câmera para o código de barras do produto.');
 
     await scannerReader.decodeFromConstraints(
       {
-        video: {
-          facingMode: { ideal: 'environment' }
-        }
+        video: { facingMode: { ideal: 'environment' } }
       },
       video,
       (result, error) => {
@@ -380,9 +389,11 @@ export function createProductsModule(ctx) {
   }
 
   function openProductActions(productId) {
-    const product = state.products.find((item) => item.id === productId);
+    const product = getRows().find((item) => item.id === productId);
 
-    if (product?.status === 'inativo') {
+    if (!product) return;
+
+    if (product.status === 'inativo') {
       window.openActionsSheet?.('Ações do produto', [
         {
           label: 'Reativar',
@@ -398,11 +409,38 @@ export function createProductsModule(ctx) {
               action: 'reactivate',
               entityType: 'product',
               entityId: productId,
-              entityLabel: product?.name || '',
+              entityLabel: product.name || '',
               description: 'Produto reativado.'
             });
 
             showToast('Produto reativado.', 'success');
+          }
+        },
+        {
+          label: 'Excluir',
+          className: 'btn btn-danger',
+          onClick: async () => {
+            window.openConfirmDeleteModal?.({
+              title: 'Excluir produto',
+              message: 'Deseja realmente excluir este produto? Ele deixará de aparecer nas listagens.',
+              onConfirm: async () => {
+                await updateByPath('products', productId, {
+                  deleted: true,
+                  status: 'inativo'
+                });
+
+                await auditModule.log({
+                  module: 'products',
+                  action: 'delete',
+                  entityType: 'product',
+                  entityId: productId,
+                  entityLabel: product.name || '',
+                  description: 'Produto excluído logicamente.'
+                });
+
+                showToast('Produto excluído.', 'success');
+              }
+            });
           }
         }
       ]);
@@ -412,7 +450,7 @@ export function createProductsModule(ctx) {
     window.openActionsSheet?.('Ações do produto', [
       {
         label: 'Inativar',
-        className: 'btn btn-danger',
+        className: 'btn btn-secondary',
         onClick: async () => {
           await updateByPath('products', productId, {
             deleted: false,
@@ -424,30 +462,51 @@ export function createProductsModule(ctx) {
             action: 'inactivate',
             entityType: 'product',
             entityId: productId,
-            entityLabel: product?.name || '',
+            entityLabel: product.name || '',
             description: 'Produto inativado.'
           });
 
           showToast('Produto inativado.', 'success');
+        }
+      },
+      {
+        label: 'Excluir',
+        className: 'btn btn-danger',
+        onClick: async () => {
+          window.openConfirmDeleteModal?.({
+            title: 'Excluir produto',
+            message: 'Deseja realmente excluir este produto? Ele deixará de aparecer nas listagens.',
+            onConfirm: async () => {
+              await updateByPath('products', productId, {
+                deleted: true,
+                status: 'inativo'
+              });
+
+              await auditModule.log({
+                module: 'products',
+                action: 'delete',
+                entityType: 'product',
+                entityId: productId,
+                entityLabel: product.name || '',
+                description: 'Produto excluído logicamente.'
+              });
+
+              showToast('Produto excluído.', 'success');
+            }
+          });
         }
       }
     ]);
   }
 
   function renderActionButtons(product) {
-    if (product.status === 'inativo') {
-      return `
-        <div class="actions-inline-compact">
-          <button class="icon-action-btn" type="button" data-product-edit="${product.id}" title="Editar" aria-label="Editar">✏️</button>
-          <button class="icon-action-btn" type="button" data-product-more="${product.id}" title="Mais ações" aria-label="Mais ações">⋯</button>
-        </div>
-      `;
-    }
-
     return `
       <div class="actions-inline-compact">
         <button class="icon-action-btn" type="button" data-product-edit="${product.id}" title="Editar" aria-label="Editar">✏️</button>
-        <button class="icon-action-btn info" type="button" data-product-move="${product.id}" title="Movimentar estoque" aria-label="Movimentar estoque">📦</button>
+        ${product.status !== 'inativo'
+          ? `<button class="icon-action-btn info" type="button" data-product-move="${product.id}" title="Movimentar estoque" aria-label="Movimentar estoque">📦</button>`
+          : ''
+        }
         <button class="icon-action-btn" type="button" data-product-more="${product.id}" title="Mais ações" aria-label="Mais ações">⋯</button>
       </div>
     `;
@@ -463,7 +522,7 @@ export function createProductsModule(ctx) {
 
     scope.querySelectorAll('[data-product-move]').forEach((btn) => {
       btn.addEventListener('click', () => {
-        inventoryModule.renderMovementModal(btn.dataset.productMove, render);
+        inventoryModule.renderMovementModal?.(btn.dataset.productMove, render);
       });
     });
 
@@ -498,9 +557,9 @@ export function createProductsModule(ctx) {
       render();
     }, { busyLabel: 'Limpando...' });
 
-    tabEls.products.querySelector('#product-filter-apply').addEventListener('click', () => {
-      productFilters.text = tabEls.products.querySelector('#product-filter-input').value || '';
-      productFilters.status = tabEls.products.querySelector('#product-status-filter').value || '';
+    tabEls.products.querySelector('#product-filter-apply')?.addEventListener('click', () => {
+      productFilters.text = tabEls.products.querySelector('#product-filter-input')?.value || '';
+      productFilters.status = tabEls.products.querySelector('#product-status-filter')?.value || '';
       render();
     });
 
@@ -512,7 +571,7 @@ export function createProductsModule(ctx) {
       render();
     }, { busyLabel: 'Limpando...' });
 
-    tabEls.products.querySelector('#movement-filter-apply').addEventListener('click', applyMovementFilters);
+    tabEls.products.querySelector('#movement-filter-apply')?.addEventListener('click', applyMovementFilters);
 
     bindAsyncButton(tabEls.products.querySelector('#movement-filter-clear'), async () => {
       movementFilters = {
@@ -596,7 +655,7 @@ export function createProductsModule(ctx) {
                     <input name="supplier" list="suppliers-datalist" />
                     <datalist id="suppliers-datalist">
                       ${(state.suppliers || [])
-                        .filter((item) => item.active !== false)
+                        .filter((item) => item.deleted !== true && item.active !== false)
                         .map((item) => `<option value="${escapeHtml(item.name || '')}"></option>`)
                         .join('')}
                     </datalist>
@@ -697,7 +756,7 @@ export function createProductsModule(ctx) {
                 <button class="btn btn-secondary" type="button" id="movement-filter-clear">Limpar</button>
               </div>
 
-              ${inventoryModule.renderMovementTable(movementFilters)}
+              ${inventoryModule.renderMovementTable?.(movementFilters) || '<div class="empty-state">Sem movimentações.</div>'}
             </div>
           </div>
         </div>

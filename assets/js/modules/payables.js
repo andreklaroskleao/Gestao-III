@@ -24,7 +24,7 @@ export function createPayablesModule(ctx) {
   let isSavingPayable = false;
 
   function getRows() {
-    return state.accountsPayable || [];
+    return (state.accountsPayable || []).filter((item) => item.deleted !== true);
   }
 
   function getFilteredRows() {
@@ -115,6 +115,11 @@ export function createPayablesModule(ctx) {
       payload.openAmount = recalcOpenAmount(payload.totalAmount, payload.paidAmount);
       payload.deleted = false;
 
+      if (!payload.supplierName || !payload.description) {
+        alert('Informe fornecedor e descrição.');
+        return;
+      }
+
       if (state.editingPayableId) {
         const current = getEditingRow();
 
@@ -196,12 +201,12 @@ export function createPayablesModule(ctx) {
       modalRoot.innerHTML = '';
     };
 
-    modalRoot.querySelector('#payable-payment-modal-close').addEventListener('click', closeModal);
-    modalRoot.querySelector('#payable-payment-modal-backdrop').addEventListener('click', (event) => {
+    modalRoot.querySelector('#payable-payment-modal-close')?.addEventListener('click', closeModal);
+    modalRoot.querySelector('#payable-payment-modal-backdrop')?.addEventListener('click', (event) => {
       if (event.target.id === 'payable-payment-modal-backdrop') closeModal();
     });
 
-    modalRoot.querySelector('#payable-payment-full-btn').addEventListener('click', () => {
+    modalRoot.querySelector('#payable-payment-full-btn')?.addEventListener('click', () => {
       modalRoot.querySelector('input[name="paymentAmount"]').value = Number(row.openAmount || 0);
     });
 
@@ -293,13 +298,15 @@ export function createPayablesModule(ctx) {
       modalRoot.innerHTML = '';
     };
 
-    modalRoot.querySelector('#payable-details-modal-close').addEventListener('click', closeModal);
-    modalRoot.querySelector('#payable-details-modal-backdrop').addEventListener('click', (event) => {
+    modalRoot.querySelector('#payable-details-modal-close')?.addEventListener('click', closeModal);
+    modalRoot.querySelector('#payable-details-modal-backdrop')?.addEventListener('click', (event) => {
       if (event.target.id === 'payable-details-modal-backdrop') closeModal();
     });
   }
 
   function openPayableActions(payableId) {
+    const row = getRows().find((item) => item.id === payableId);
+
     window.openActionsSheet?.('Ações da conta', [
       {
         label: 'Editar',
@@ -307,6 +314,38 @@ export function createPayablesModule(ctx) {
         onClick: async () => {
           state.editingPayableId = payableId;
           render();
+        }
+      },
+      {
+        label: 'Excluir',
+        className: 'btn btn-danger',
+        onClick: async () => {
+          if (!row) return;
+
+          window.openConfirmDeleteModal?.({
+            title: 'Excluir conta a pagar',
+            message: 'Deseja realmente excluir esta conta a pagar?',
+            onConfirm: async () => {
+              await updateByPath('accounts_payable', payableId, {
+                deleted: true
+              });
+
+              await auditModule.log({
+                module: 'payables',
+                action: 'delete',
+                entityType: 'account_payable',
+                entityId: payableId,
+                entityLabel: row.description || '',
+                description: 'Conta a pagar excluída logicamente.'
+              });
+
+              showToast('Conta a pagar excluída.', 'success');
+
+              if (state.editingPayableId === payableId) {
+                state.editingPayableId = null;
+              }
+            }
+          });
         }
       }
     ]);
@@ -406,7 +445,7 @@ export function createPayablesModule(ctx) {
                     <input name="supplierName" list="payable-suppliers-datalist" required />
                     <datalist id="payable-suppliers-datalist">
                       ${(state.suppliers || [])
-                        .filter((item) => item.active !== false)
+                        .filter((item) => item.deleted !== true && item.active !== false)
                         .map((item) => `<option value="${escapeHtml(item.name || '')}"></option>`)
                         .join('')}
                     </datalist>

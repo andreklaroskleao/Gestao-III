@@ -367,7 +367,8 @@ const clientsTabModule = createClientsTabModule({
   tabEls,
   clientsModule,
   accountsModule,
-  hasPermission
+  hasPermission,
+  updateByPath
 });
 
 const pwaModule = createPwaModule();
@@ -512,7 +513,7 @@ function renderStockAlerts() {
   const receivablesSummary = receivablesAlertsModule.getNotificationSummary();
 
   const payableItems = (state.accountsPayable || [])
-    .filter((item) => Number(item.openAmount || 0) > 0 && item.dueDate)
+    .filter((item) => item.deleted !== true && Number(item.openAmount || 0) > 0 && item.dueDate)
     .map((item) => {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -701,7 +702,7 @@ function bootstrapData() {
   }));
 
   state.unsubscribe.push(subscribeCollection('clients', [orderBy('name')], (rows) => {
-    state.clients = rows;
+    state.clients = rows.filter((item) => item.deleted !== true);
     renderSales();
     renderDeliveries();
     renderClients();
@@ -709,7 +710,7 @@ function bootstrapData() {
   }));
 
   state.unsubscribe.push(subscribeCollection('suppliers', [orderBy('name')], (rows) => {
-    state.suppliers = rows;
+    state.suppliers = rows.filter((item) => item.deleted !== true);
     renderSuppliers();
     renderProducts();
     renderPayables();
@@ -831,78 +832,145 @@ function openActionsSheet(title, actions = []) {
   });
 }
 
+function openConfirmDeleteModal({
+  title = 'Confirmar exclusão',
+  message = 'Deseja realmente excluir este registro?',
+  confirmLabel = 'Excluir',
+  onConfirm
+} = {}) {
+  const root = document.getElementById('modal-root');
+  if (!root) return;
+
+  root.innerHTML = `
+    <div class="modal-backdrop" id="confirm-delete-backdrop">
+      <div class="modal-card confirm-delete-modal">
+        <div class="section-header">
+          <h2>${title}</h2>
+          <button class="btn btn-secondary" type="button" id="confirm-delete-close">Fechar</button>
+        </div>
+
+        <div class="empty-state" style="text-align:left;">
+          <strong>Atenção</strong>
+          <span>${message}</span>
+        </div>
+
+        <div class="form-actions" style="margin-top:16px; justify-content:flex-end;">
+          <button class="btn btn-secondary" type="button" id="confirm-delete-cancel">Cancelar</button>
+          <button class="btn btn-danger" type="button" id="confirm-delete-confirm">${confirmLabel}</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const closeModal = () => {
+    root.innerHTML = '';
+  };
+
+  root.querySelector('#confirm-delete-close')?.addEventListener('click', closeModal);
+  root.querySelector('#confirm-delete-cancel')?.addEventListener('click', closeModal);
+
+  root.querySelector('#confirm-delete-backdrop')?.addEventListener('click', (event) => {
+    if (event.target.id === 'confirm-delete-backdrop') {
+      closeModal();
+    }
+  });
+
+  root.querySelector('#confirm-delete-confirm')?.addEventListener('click', async () => {
+    try {
+      await onConfirm?.();
+    } finally {
+      closeModal();
+    }
+  });
+}
+
 function buildGlobalSearchIndex() {
   const entries = [];
 
-  state.products.forEach((item) => {
-    entries.push({
-      type: 'product',
-      label: item.name || 'Produto',
-      subtitle: `${item.barcode || 'Sem código'} · ${item.brand || 'Sem marca'}`,
-      tab: 'products',
-      search: [item.name, item.barcode, item.brand, item.supplier].join(' ').toLowerCase()
+  (state.products || [])
+    .filter((item) => item.deleted !== true)
+    .forEach((item) => {
+      entries.push({
+        type: 'product',
+        label: item.name || 'Produto',
+        subtitle: `${item.barcode || 'Sem código'} · ${item.brand || 'Sem marca'}`,
+        tab: 'products',
+        search: [item.name, item.barcode, item.brand, item.supplier].join(' ').toLowerCase()
+      });
     });
-  });
 
-  state.clients.forEach((item) => {
-    entries.push({
-      type: 'client',
-      label: item.name || 'Cliente',
-      subtitle: `${item.phone || 'Sem telefone'} · ${item.email || 'Sem e-mail'}`,
-      tab: 'clients',
-      search: [item.name, item.phone, item.email, item.address].join(' ').toLowerCase()
+  (state.clients || [])
+    .filter((item) => item.deleted !== true)
+    .forEach((item) => {
+      entries.push({
+        type: 'client',
+        label: item.name || 'Cliente',
+        subtitle: `${item.phone || 'Sem telefone'} · ${item.email || 'Sem e-mail'}`,
+        tab: 'clients',
+        search: [item.name, item.phone, item.email, item.address].join(' ').toLowerCase()
+      });
     });
-  });
 
-  state.suppliers.forEach((item) => {
-    entries.push({
-      type: 'supplier',
-      label: item.name || 'Fornecedor',
-      subtitle: `${item.phone || 'Sem telefone'} · ${item.email || 'Sem e-mail'}`,
-      tab: 'suppliers',
-      search: [item.name, item.contactName, item.phone, item.email, item.document].join(' ').toLowerCase()
+  (state.suppliers || [])
+    .filter((item) => item.deleted !== true)
+    .forEach((item) => {
+      entries.push({
+        type: 'supplier',
+        label: item.name || 'Fornecedor',
+        subtitle: `${item.phone || 'Sem telefone'} · ${item.email || 'Sem e-mail'}`,
+        tab: 'suppliers',
+        search: [item.name, item.contactName, item.phone, item.email, item.document].join(' ').toLowerCase()
+      });
     });
-  });
 
-  state.sales.slice(0, 100).forEach((item) => {
-    entries.push({
-      type: 'sale',
-      label: item.customerName || 'Venda balcão',
-      subtitle: `${currency(item.total || 0)} · ${formatDateTime(item.createdAt)}`,
-      tab: 'sales',
-      search: [item.customerName, item.paymentMethod, item.cashierName].join(' ').toLowerCase()
+  (state.sales || [])
+    .filter((item) => item.deleted !== true)
+    .slice(0, 100)
+    .forEach((item) => {
+      entries.push({
+        type: 'sale',
+        label: item.customerName || 'Venda balcão',
+        subtitle: `${currency(item.total || 0)} · ${formatDateTime(item.createdAt)}`,
+        tab: 'sales',
+        search: [item.customerName, item.paymentMethod, item.cashierName].join(' ').toLowerCase()
+      });
     });
-  });
 
-  state.deliveries.forEach((item) => {
-    entries.push({
-      type: 'delivery',
-      label: item.customerName || 'Entrega',
-      subtitle: `${item.phone || 'Sem telefone'} · ${item.status || 'Sem status'}`,
-      tab: 'deliveries',
-      search: [item.customerName, item.phone, item.address, item.status].join(' ').toLowerCase()
+  (state.deliveries || [])
+    .filter((item) => item.deleted !== true)
+    .forEach((item) => {
+      entries.push({
+        type: 'delivery',
+        label: item.customerName || 'Entrega',
+        subtitle: `${item.phone || 'Sem telefone'} · ${item.status || 'Sem status'}`,
+        tab: 'deliveries',
+        search: [item.customerName, item.phone, item.address, item.status].join(' ').toLowerCase()
+      });
     });
-  });
 
-  state.accountsPayable.forEach((item) => {
-    entries.push({
-      type: 'payable',
-      label: item.description || 'Conta a pagar',
-      subtitle: `${item.supplierName || 'Fornecedor'} · ${currency(item.openAmount || 0)}`,
-      tab: 'payables',
-      search: [item.description, item.supplierName, item.documentNumber].join(' ').toLowerCase()
+  (state.accountsPayable || [])
+    .filter((item) => item.deleted !== true)
+    .forEach((item) => {
+      entries.push({
+        type: 'payable',
+        label: item.description || 'Conta a pagar',
+        subtitle: `${item.supplierName || 'Fornecedor'} · ${currency(item.openAmount || 0)}`,
+        tab: 'payables',
+        search: [item.description, item.supplierName, item.documentNumber].join(' ').toLowerCase()
+      });
     });
-  });
 
-  state.purchases.forEach((item) => {
-    entries.push({
-      type: 'purchase',
-      label: item.description || 'Compra',
-      subtitle: `${item.supplierName || 'Fornecedor'} · ${currency(item.totalAmount || 0)}`,
-      tab: 'purchases',
-      search: [item.description, item.supplierName, item.documentNumber].join(' ').toLowerCase()
+  (state.purchases || [])
+    .filter((item) => item.deleted !== true)
+    .forEach((item) => {
+      entries.push({
+        type: 'purchase',
+        label: item.description || 'Compra',
+        subtitle: `${item.supplierName || 'Fornecedor'} · ${currency(item.totalAmount || 0)}`,
+        tab: 'purchases',
+        search: [item.description, item.supplierName, item.documentNumber].join(' ').toLowerCase()
+      });
     });
-  });
 
   return entries;
 }
@@ -973,6 +1041,7 @@ function performGlobalSearch(rawTerm) {
 
 window.openActionsSheet = openActionsSheet;
 window.closeActionsSheet = closeActionsSheet;
+window.openConfirmDeleteModal = openConfirmDeleteModal;
 
 if (els.loginForm) {
   els.loginForm.addEventListener('submit', handleLogin);

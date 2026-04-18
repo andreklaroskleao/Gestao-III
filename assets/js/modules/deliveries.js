@@ -26,34 +26,7 @@ export function createDeliveriesModule(ctx) {
   let isSavingDelivery = false;
 
   function getEditingDelivery() {
-    return (state.deliveries || []).find((item) => item.id === state.editingDeliveryId) || null;
-  }
-
-  function getFilteredDeliveries() {
-    const rows = state.deliveries || [];
-
-    return rows.filter((item) => {
-      const customer = String(item.customerName || '').toLowerCase();
-      const phone = String(item.phone || '').toLowerCase();
-      const status = String(item.status || '');
-      const scheduledDate = normalizeScheduledDate(item.scheduledAt);
-
-      if (filters.status && status !== filters.status) return false;
-      if (filters.customer && !customer.includes(filters.customer.toLowerCase())) return false;
-      if (filters.phone && !phone.includes(filters.phone.toLowerCase())) return false;
-
-      if (filters.period === 'today') {
-        const today = new Date();
-        const todayKey = formatDateKey(today);
-        if (scheduledDate !== todayKey) return false;
-      }
-
-      if (filters.period === 'pending') {
-        if (status === 'Concluído' || status === 'Cancelado') return false;
-      }
-
-      return true;
-    });
+    return (state.deliveries || []).find((item) => item.id === state.editingDeliveryId && item.deleted !== true) || null;
   }
 
   function normalizeScheduledDate(value) {
@@ -86,8 +59,35 @@ export function createDeliveriesModule(ctx) {
     return `${year}-${month}-${day}`;
   }
 
+  function getFilteredDeliveries() {
+    const rows = (state.deliveries || []).filter((item) => item.deleted !== true);
+
+    return rows.filter((item) => {
+      const customer = String(item.customerName || '').toLowerCase();
+      const phone = String(item.phone || '').toLowerCase();
+      const status = String(item.status || '');
+      const scheduledDate = normalizeScheduledDate(item.scheduledAt);
+
+      if (filters.status && status !== filters.status) return false;
+      if (filters.customer && !customer.includes(filters.customer.toLowerCase())) return false;
+      if (filters.phone && !phone.includes(filters.phone.toLowerCase())) return false;
+
+      if (filters.period === 'today') {
+        const today = new Date();
+        const todayKey = formatDateKey(today);
+        if (scheduledDate !== todayKey) return false;
+      }
+
+      if (filters.period === 'pending') {
+        if (status === 'Concluído' || status === 'Cancelado') return false;
+      }
+
+      return true;
+    });
+  }
+
   function getDeliverySummary() {
-    const rows = state.deliveries || [];
+    const rows = (state.deliveries || []).filter((item) => item.deleted !== true);
 
     const todayKey = formatDateKey(new Date());
     const todayCount = rows.filter((item) => normalizeScheduledDate(item.scheduledAt) === todayKey).length;
@@ -157,6 +157,11 @@ export function createDeliveriesModule(ctx) {
 
       delete payload.customerSearch;
 
+      if (!payload.customerName) {
+        alert('Informe o cliente.');
+        return;
+      }
+
       if (state.editingDeliveryId) {
         await updateByPath('deliveries', state.editingDeliveryId, payload);
         state.editingDeliveryId = null;
@@ -174,7 +179,7 @@ export function createDeliveriesModule(ctx) {
   }
 
   async function updateDeliveryStatus(deliveryId, nextStatus) {
-    const delivery = (state.deliveries || []).find((item) => item.id === deliveryId);
+    const delivery = (state.deliveries || []).find((item) => item.id === deliveryId && item.deleted !== true);
     if (!delivery) return;
 
     await updateByPath('deliveries', deliveryId, {
@@ -185,6 +190,8 @@ export function createDeliveriesModule(ctx) {
   }
 
   function openDeliveryActions(deliveryId) {
+    const delivery = (state.deliveries || []).find((item) => item.id === deliveryId && item.deleted !== true);
+
     window.openActionsSheet?.('Ações da entrega', [
       {
         label: 'Iniciar',
@@ -198,13 +205,35 @@ export function createDeliveriesModule(ctx) {
       },
       {
         label: 'Cancelar',
-        className: 'btn btn-danger',
+        className: 'btn btn-secondary',
         onClick: async () => updateDeliveryStatus(deliveryId, 'Cancelado')
       },
       {
         label: 'Reagendar',
         className: 'btn btn-secondary',
         onClick: async () => updateDeliveryStatus(deliveryId, 'Reagendado')
+      },
+      {
+        label: 'Excluir',
+        className: 'btn btn-danger',
+        onClick: async () => {
+          window.openConfirmDeleteModal?.({
+            title: 'Excluir entrega',
+            message: 'Deseja realmente excluir esta entrega/recolhimento?',
+            onConfirm: async () => {
+              await updateByPath('deliveries', deliveryId, {
+                deleted: true,
+                status: 'Cancelado'
+              });
+
+              showToast('Entrega excluída.', 'success');
+
+              if (state.editingDeliveryId === deliveryId) {
+                state.editingDeliveryId = null;
+              }
+            }
+          });
+        }
       }
     ]);
   }
@@ -298,8 +327,8 @@ export function createDeliveriesModule(ctx) {
         modalRoot.innerHTML = '';
       };
 
-      modalRoot.querySelector('#delivery-client-modal-close').addEventListener('click', closeModal);
-      modalRoot.querySelector('#delivery-client-modal-backdrop').addEventListener('click', (event) => {
+      modalRoot.querySelector('#delivery-client-modal-close')?.addEventListener('click', closeModal);
+      modalRoot.querySelector('#delivery-client-modal-backdrop')?.addEventListener('click', (event) => {
         if (event.target.id === 'delivery-client-modal-backdrop') {
           closeModal();
         }

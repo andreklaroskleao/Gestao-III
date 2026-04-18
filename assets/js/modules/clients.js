@@ -1,4 +1,4 @@
-import { escapeHtml } from './ui.js';
+import { escapeHtml, showToast, bindSubmitGuard, bindAsyncButton } from './ui.js';
 
 export function createClientsModule(ctx) {
   const {
@@ -9,250 +9,312 @@ export function createClientsModule(ctx) {
     auditModule
   } = ctx;
 
-  function normalizePhone(value = '') {
-    return String(value).replace(/\D/g, '');
+  let pickerState = {
+    target: '',
+    onSelect: null,
+    term: ''
+  };
+
+  let isSavingClient = false;
+
+  function getRows() {
+    return (state.clients || []).filter((item) => item.deleted !== true);
   }
 
   function getClientById(clientId) {
-    return (state.clients || []).find((item) => item.id === clientId) || null;
+    return getRows().find((item) => item.id === clientId) || null;
   }
 
-  function searchClients(term = '') {
-    const query = String(term || '').trim().toLowerCase();
-
-    return (state.clients || [])
-      .filter((item) => item.active !== false)
-      .filter((item) => !query || [item.name, item.phone, item.email].join(' ').toLowerCase().includes(query))
-      .slice(0, 12);
+  function getEditingClient() {
+    return getClientById(state.editingClientId);
   }
 
-  async function createClient(payload) {
-    const data = {
-      name: String(payload.name || '').trim(),
-      phone: normalizePhone(payload.phone),
-      address: String(payload.address || '').trim(),
-      email: String(payload.email || '').trim(),
-      notes: String(payload.notes || '').trim(),
-      active: payload.active !== false,
-      createdById: state.currentUser?.uid || '',
-      createdByName: state.currentUser?.fullName || ''
-    };
+  async function saveClient() {
+    if (isSavingClient) return;
+    isSavingClient = true;
 
-    if (!data.name) {
-      throw new Error('Informe o nome do cliente.');
+    try {
+      const form = document.querySelector('#client-form');
+      if (!form) return;
+
+      const payload = Object.fromEntries(new FormData(form).entries());
+
+      payload.active = String(payload.active || 'true') === 'true';
+      payload.deleted = false;
+
+      if (!payload.name) {
+        alert('Informe o nome do cliente.');
+        return;
+      }
+
+      if (state.editingClientId) {
+        const current = getEditingClient();
+
+        await updateByPath('clients', state.editingClientId, payload);
+
+        await auditModule?.log?.({
+          module: 'clients',
+          action: 'update',
+          entityType: 'client',
+          entityId: state.editingClientId,
+          entityLabel: payload.name || current?.name || '',
+          description: 'Cliente atualizado.'
+        });
+
+        state.editingClientId = null;
+        showToast('Cliente atualizado.', 'success');
+      } else {
+        const createdId = await createDoc(refs.clients, payload);
+
+        await auditModule?.log?.({
+          module: 'clients',
+          action: 'create',
+          entityType: 'client',
+          entityId: createdId,
+          entityLabel: payload.name || '',
+          description: 'Cliente cadastrado.'
+        });
+
+        showToast('Cliente cadastrado.', 'success');
+      }
+
+      form.reset();
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('clients:changed'));
+      }
+    } finally {
+      isSavingClient = false;
     }
-
-    const createdId = await createDoc(refs.clients, data);
-
-    await auditModule.log({
-      module: 'clients',
-      action: 'create',
-      entityType: 'client',
-      entityId: createdId,
-      entityLabel: data.name,
-      description: 'Cliente cadastrado.'
-    });
-
-    return createdId;
-  }
-
-  async function updateClient(clientId, payload) {
-    const current = getClientById(clientId);
-
-    const data = {
-      name: String(payload.name || '').trim(),
-      phone: normalizePhone(payload.phone),
-      address: String(payload.address || '').trim(),
-      email: String(payload.email || '').trim(),
-      notes: String(payload.notes || '').trim(),
-      active: payload.active !== false
-    };
-
-    await updateByPath('clients', clientId, data);
-
-    await auditModule.log({
-      module: 'clients',
-      action: 'update',
-      entityType: 'client',
-      entityId: clientId,
-      entityLabel: data.name || current?.name || '',
-      description: 'Cliente atualizado.'
-    });
   }
 
   async function inactivateClient(clientId) {
-    const current = getClientById(clientId);
+    const client = getClientById(clientId);
+    if (!client) return;
 
     await updateByPath('clients', clientId, {
-      active: false
+      active: false,
+      deleted: false
     });
 
-    await auditModule.log({
+    await auditModule?.log?.({
       module: 'clients',
       action: 'inactivate',
       entityType: 'client',
       entityId: clientId,
-      entityLabel: current?.name || '',
+      entityLabel: client.name || '',
       description: 'Cliente inativado.'
+    });
+
+    showToast('Cliente inativado.', 'success');
+  }
+
+  async function reactivateClient(clientId) {
+    const client = getClientById(clientId);
+    if (!client) return;
+
+    await updateByPath('clients', clientId, {
+      active: true,
+      deleted: false
+    });
+
+    await auditModule?.log?.({
+      module: 'clients',
+      action: 'reactivate',
+      entityType: 'client',
+      entityId: clientId,
+      entityLabel: client.name || '',
+      description: 'Cliente reativado.'
+    });
+
+    showToast('Cliente reativado.', 'success');
+  }
+
+  function fillClientForm(form, client) {
+    if (!form) return;
+
+    form.elements.name.value = client?.name || '';
+    form.elements.phone.value = client?.phone || '';
+    form.elements.email.value = client?.email || '';
+    form.elements.document.value = client?.document || '';
+    form.elements.address.value = client?.address || '';
+    form.elements.reference.value = client?.reference || '';
+    form.elements.notes.value = client?.notes || '';
+    form.elements.active.value = String(client?.active !== false);
+  }
+
+  function bindClientFormEvents() {
+    const form = document.querySelector('#client-form');
+    if (!form) return;
+
+    bindSubmitGuard(form, saveClient, { busyLabel: 'Salvando...' });
+
+    const resetBtn = document.querySelector('#client-reset-btn');
+    bindAsyncButton(resetBtn, async () => {
+      state.editingClientId = null;
+      const freshForm = document.querySelector('#client-form');
+      if (freshForm) {
+        freshForm.reset();
+        fillClientForm(freshForm, null);
+      }
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('clients:changed'));
+      }
+    }, { busyLabel: 'Limpando...' });
+  }
+
+  function renderClientForm(editingClientId = null) {
+    if (editingClientId !== null && editingClientId !== undefined) {
+      state.editingClientId = editingClientId;
+    }
+
+    const editing = getEditingClient();
+
+    const html = `
+      <div class="section-header">
+        <h2>${editing ? 'Editar cliente' : 'Cadastrar cliente'}</h2>
+        <span class="muted">${editing ? 'Atualize os dados do cliente.' : 'Cadastro de clientes.'}</span>
+      </div>
+
+      <form id="client-form" class="form-grid mobile-optimized">
+        <div class="form-section" style="grid-column:1 / -1;">
+          <div class="form-section-title">
+            <h3>1. Dados principais</h3>
+            <span>Identificação e contato</span>
+          </div>
+          <div class="soft-divider"></div>
+
+          <div class="form-grid">
+            <label>Nome
+              <input name="name" required />
+            </label>
+
+            <label>Telefone
+              <input name="phone" />
+            </label>
+
+            <label>E-mail
+              <input name="email" type="email" />
+            </label>
+
+            <label>Documento
+              <input name="document" />
+            </label>
+
+            <label>Status
+              <select name="active">
+                <option value="true">Ativo</option>
+                <option value="false">Inativo</option>
+              </select>
+            </label>
+
+            <label style="grid-column:1 / -1;">Endereço
+              <input name="address" />
+            </label>
+
+            <label style="grid-column:1 / -1;">Referência
+              <input name="reference" />
+            </label>
+
+            <label style="grid-column:1 / -1;">Observações
+              <textarea name="notes"></textarea>
+            </label>
+          </div>
+        </div>
+
+        <div class="form-actions" style="grid-column:1 / -1;">
+          <button class="btn btn-primary" type="submit">${editing ? 'Salvar cliente' : 'Cadastrar cliente'}</button>
+          <button class="btn btn-secondary" type="button" id="client-reset-btn">Limpar</button>
+        </div>
+      </form>
+    `;
+
+    queueMicrotask(() => {
+      const form = document.querySelector('#client-form');
+      fillClientForm(form, editing);
+      bindClientFormEvents();
+    });
+
+    return html;
+  }
+
+  function getFilteredPickerRows() {
+    return getRows()
+      .filter((item) => item.active !== false)
+      .filter((item) => {
+        const haystack = [
+          item.name,
+          item.phone,
+          item.email,
+          item.document,
+          item.address
+        ].join(' ').toLowerCase();
+
+        return !pickerState.term || haystack.includes(pickerState.term.toLowerCase());
+      })
+      .slice(0, 20);
+  }
+
+  function renderClientPickerList() {
+    const host = document.querySelector(pickerState.target);
+    if (!host) return;
+
+    const rows = getFilteredPickerRows();
+
+    host.innerHTML = `
+      <div class="section-stack">
+        <div class="search-row">
+          <input
+            id="client-picker-search"
+            placeholder="Buscar cliente por nome, telefone, documento ou endereço"
+            value="${escapeHtml(pickerState.term)}"
+          />
+        </div>
+
+        <div class="stack-list slim-list">
+          ${rows.map((item) => `
+            <button class="list-item" type="button" data-client-picker-select="${item.id}">
+              <strong>${escapeHtml(item.name || '-')}</strong>
+              <span>${escapeHtml(item.phone || 'Sem telefone')} · ${escapeHtml(item.document || 'Sem documento')}</span>
+              <span>${escapeHtml(item.address || 'Sem endereço')}</span>
+            </button>
+          `).join('') || '<div class="empty-state">Nenhum cliente encontrado.</div>'}
+        </div>
+      </div>
+    `;
+
+    const searchInput = host.querySelector('#client-picker-search');
+    searchInput?.addEventListener('input', (event) => {
+      pickerState.term = event.currentTarget.value || '';
+      renderClientPickerList();
+    });
+
+    host.querySelectorAll('[data-client-picker-select]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const client = getClientById(btn.dataset.clientPickerSelect);
+        if (!client) return;
+
+        pickerState.onSelect?.(client);
+      });
     });
   }
 
-  function getClientSales(clientId) {
-    return (state.sales || [])
-      .filter((sale) => sale.clientId === clientId)
-      .sort((a, b) => {
-        const da = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : new Date(a.createdAt || 0).getTime();
-        const db = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : new Date(b.createdAt || 0).getTime();
-        return db - da;
-      });
-  }
-
-  function getClientDeliveries(clientId) {
-    return (state.deliveries || [])
-      .filter((item) => item.clientId === clientId)
-      .sort((a, b) => {
-        const da = a.scheduledAt?.toDate ? a.scheduledAt.toDate().getTime() : new Date(a.scheduledAt || 0).getTime();
-        const db = b.scheduledAt?.toDate ? b.scheduledAt.toDate().getTime() : new Date(b.scheduledAt || 0).getTime();
-        return db - da;
-      });
-  }
-
   function renderClientPicker({ target, onSelect }) {
-    const host = document.querySelector(target);
-    if (!host) return;
+    pickerState = {
+      target,
+      onSelect,
+      term: ''
+    };
 
-    host.innerHTML = `
-      <div class="client-picker">
-        <div class="search-row">
-          <input id="client-picker-search" placeholder="Buscar cliente por nome ou telefone" />
-          <button class="btn btn-secondary" id="client-picker-search-btn">Buscar</button>
-        </div>
-        <div id="client-picker-results" class="stack-list" style="margin-top:12px;"></div>
-      </div>
-    `;
-
-    const resultsEl = host.querySelector('#client-picker-results');
-    const input = host.querySelector('#client-picker-search');
-
-    function renderResults() {
-      const rows = searchClients(input.value);
-
-      resultsEl.innerHTML = rows.map((client) => `
-        <div class="list-item">
-          <strong>${escapeHtml(client.name)}</strong>
-          <span>${escapeHtml(client.phone || '-')} ${client.address ? '· ' + escapeHtml(client.address) : ''}</span>
-          <div class="inline-row" style="margin-top:8px;">
-            <button class="btn btn-primary" data-client-select="${client.id}">Selecionar</button>
-          </div>
-        </div>
-      `).join('') || '<div class="empty-state">Nenhum cliente encontrado.</div>';
-
-      resultsEl.querySelectorAll('[data-client-select]').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          const client = getClientById(btn.dataset.clientSelect);
-          if (client) {
-            onSelect(client);
-          }
-        });
-      });
-    }
-
-    host.querySelector('#client-picker-search-btn').addEventListener('click', renderResults);
-    input.addEventListener('input', renderResults);
-    renderResults();
-  }
-
-  function renderClientHistory(clientId) {
-    const client = getClientById(clientId);
-
-    if (!client) {
-      return '<div class="empty-state">Cliente não encontrado.</div>';
-    }
-
-    const sales = getClientSales(clientId);
-    const deliveries = getClientDeliveries(clientId);
-
-    return `
-      <div class="cards-grid">
-        <div class="card">
-          <h3>Cliente</h3>
-          <p><strong>${escapeHtml(client.name)}</strong></p>
-          <p>${escapeHtml(client.phone || '-')}</p>
-          <p>${escapeHtml(client.address || '-')}</p>
-          <p>${escapeHtml(client.email || '-')}</p>
-        </div>
-
-        <div class="card">
-          <h3>Resumo</h3>
-          <p>Total de compras: <strong>${sales.length}</strong></p>
-          <p>Total de entregas: <strong>${deliveries.length}</strong></p>
-          <p>Status: <strong>${client.active === false ? 'Inativo' : 'Ativo'}</strong></p>
-        </div>
-      </div>
-
-      <div class="table-card" style="margin-top:18px;">
-        <h3>Histórico de compras</h3>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Data</th>
-                <th>Total</th>
-                <th>Pagamento</th>
-                <th>Itens</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${sales.map((sale) => `
-                <tr>
-                  <td>${sale.createdAt?.toDate ? sale.createdAt.toDate().toLocaleString('pt-BR') : '-'}</td>
-                  <td>${Number(sale.total || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                  <td>${escapeHtml(sale.paymentMethod || '-')}</td>
-                  <td>${sale.items?.length || 0}</td>
-                </tr>
-              `).join('') || '<tr><td colspan="4">Nenhuma compra encontrada.</td></tr>'}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div class="table-card" style="margin-top:18px;">
-        <h3>Histórico de entregas</h3>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Data</th>
-                <th>Status</th>
-                <th>Valor</th>
-                <th>Descrição</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${deliveries.map((item) => `
-                <tr>
-                  <td>${item.scheduledAt?.toDate ? item.scheduledAt.toDate().toLocaleString('pt-BR') : '-'}</td>
-                  <td>${escapeHtml(item.status || '-')}</td>
-                  <td>${Number(item.amount || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                  <td>${escapeHtml(item.description || '-')}</td>
-                </tr>
-              `).join('') || '<tr><td colspan="4">Nenhuma entrega encontrada.</td></tr>'}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    `;
+    renderClientPickerList();
   }
 
   return {
-    searchClients,
-    createClient,
-    updateClient,
-    inactivateClient,
-    getClientById,
-    getClientSales,
-    getClientDeliveries,
+    renderClientForm,
     renderClientPicker,
-    renderClientHistory
+    inactivateClient,
+    reactivateClient,
+    getClientById
   };
 }

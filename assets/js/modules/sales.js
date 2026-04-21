@@ -97,6 +97,7 @@ export function createSalesModule(ctx) {
       customerCpf: sale.customerCpf || '',
       paymentMethod: sale.paymentMethod || '',
       createdAt: sale.createdAt || null,
+      saleDateTimeLabel: sale.saleDateTimeLabel || formatDateTime(sale.createdAt),
       subtotal: Number(sale.subtotal || 0),
       discount: Number(sale.discount || 0),
       total: Number(sale.total || 0),
@@ -371,7 +372,8 @@ export function createSalesModule(ctx) {
         total: Number(item.salePrice || 0) * Number(item.quantity || 0)
       }));
 
-      const saleCreatedAt = new Date().toISOString();
+      const saleCreatedAt = new Date();
+      const saleDateTimeLabel = saleCreatedAt.toLocaleString('pt-BR');
 
       const payload = {
         customerName,
@@ -402,7 +404,8 @@ export function createSalesModule(ctx) {
       printModule.printSaleReceipt({
         ...payload,
         id: saleId,
-        createdAt: saleCreatedAt
+        createdAt: saleCreatedAt.toISOString(),
+        saleDateTimeLabel
       });
 
       state.cart = [];

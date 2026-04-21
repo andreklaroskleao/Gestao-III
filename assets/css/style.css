@@ -2114,3 +2114,41 @@ body.sidebar-collapsed .sidebar .nav-item:hover::after {
     align-items: end;
   }
 }
+
+#tab-sales .sales-search-row {
+  align-items: end;
+}
+
+#tab-sales #sale-select-client-btn,
+#tab-sales #sale-clear-client-btn {
+  min-height: 48px;
+  align-self: end;
+}
+
+#tab-sales #sale-search-results .list-item {
+  display: grid;
+  gap: 8px;
+}
+
+#tab-sales select,
+#tab-sales option {
+  color: var(--text);
+  background: var(--panel);
+}
+
+body.theme-light #tab-sales select,
+body.theme-light #tab-sales option {
+  color: var(--text);
+  background: #fff;
+}
+
+@media (min-width: 1024px) {
+  #tab-sales .sales-search-row {
+    grid-template-columns: minmax(420px, 620px) auto auto;
+  }
+
+  #tab-sales #sale-product-search {
+    min-width: 420px;
+    width: min(100%, 620px);
+  }
+}

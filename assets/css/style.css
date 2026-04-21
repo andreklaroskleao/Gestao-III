@@ -2190,3 +2190,61 @@ body.theme-light #tab-sales option {
     width: min(100%, 620px);
   }
 }
+
+#tab-sales .sales-search-toolbar {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+#tab-sales .sales-search-main {
+  flex: 1 1 420px;
+  min-width: 280px;
+}
+
+#tab-sales .sales-search-main #sale-product-search {
+  width: 100%;
+  min-height: 48px;
+  font-size: 1rem;
+}
+
+#tab-sales .sales-search-actions {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+#tab-sales #sale-select-client-btn,
+#tab-sales #sale-clear-client-btn {
+  min-height: 48px;
+}
+
+#tab-sales #sale-search-results .list-item {
+  display: grid;
+  gap: 8px;
+}
+
+#tab-sales select,
+#tab-sales option {
+  color: var(--text);
+  background: var(--panel);
+}
+
+body.theme-light #tab-sales select,
+body.theme-light #tab-sales option {
+  color: var(--text);
+  background: #fff;
+}
+
+@media (max-width: 768px) {
+  #tab-sales .sales-search-toolbar {
+    align-items: stretch;
+  }
+
+  #tab-sales .sales-search-main,
+  #tab-sales .sales-search-actions {
+    width: 100%;
+  }
+}

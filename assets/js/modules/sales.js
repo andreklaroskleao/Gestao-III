@@ -97,6 +97,7 @@ export function createSalesModule(ctx) {
       customerName: sale.customerName || '',
       customerCpf: sale.customerCpf || '',
       paymentMethod: sale.paymentMethod || '',
+      createdAt: sale.createdAt || null,
       subtotal: Number(sale.subtotal || 0),
       discount: Number(sale.discount || 0),
       total: Number(sale.total || 0),
@@ -332,9 +333,7 @@ export function createSalesModule(ctx) {
     const sync = () => {
       const checked = checkbox.checked;
       wrap.style.display = checked ? '' : 'none';
-      if (!checked) {
-        input.value = '';
-      }
+      if (!checked) input.value = '';
     };
 
     checkbox.addEventListener('change', sync);
@@ -373,6 +372,8 @@ export function createSalesModule(ctx) {
         total: Number(item.salePrice || 0) * Number(item.quantity || 0)
       }));
 
+      const saleCreatedAt = new Date().toISOString();
+
       const payload = {
         customerName,
         customerCpf,
@@ -401,7 +402,8 @@ export function createSalesModule(ctx) {
 
       printModule.printSaleReceipt({
         ...payload,
-        id: saleId
+        id: saleId,
+        createdAt: saleCreatedAt
       });
 
       state.cart = [];

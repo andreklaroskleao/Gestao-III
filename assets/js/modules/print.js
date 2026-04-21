@@ -88,6 +88,8 @@ export function createPrintModule(ctx) {
     const phone = state.settings?.phone || state.settings?.storePhone || '';
     const warrantyText = state.settings?.warrantyText || '';
     const saleDateTime = sale.createdAt ? formatDateTime(sale.createdAt) : formatDateTime();
+    const customerName = String(sale.customerName || '').trim() || 'Não identificado';
+    const customerCpf = String(sale.customerCpf || '').trim();
 
     return `
       <!doctype html>
@@ -288,8 +290,14 @@ export function createPrintModule(ctx) {
               </div>
               <div class="meta-line">
                 <span class="label">Cliente:</span>
-                <span class="value">${escapeHtml(sale.customerName || 'Balcão')}</span>
+                <span class="value">${escapeHtml(customerName)}</span>
               </div>
+              ${customerCpf ? `
+                <div class="meta-line">
+                  <span class="label">CPF:</span>
+                  <span class="value">${escapeHtml(customerCpf)}</span>
+                </div>
+              ` : ''}
               <div class="meta-line">
                 <span class="label">Pagamento:</span>
                 <span class="value">${escapeHtml(sale.paymentMethod || '-')}</span>

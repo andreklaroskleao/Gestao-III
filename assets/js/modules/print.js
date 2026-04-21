@@ -35,7 +35,7 @@ export function createPrintModule(ctx) {
       : date.toLocaleString('pt-BR');
   }
 
-  function truncateText(text, max = 24) {
+  function truncateText(text, max = 28) {
     const value = String(text || '').trim();
     if (value.length <= max) return value;
     return `${value.slice(0, max - 1)}…`;
@@ -45,16 +45,14 @@ export function createPrintModule(ctx) {
     const items = Array.isArray(sale.items) ? sale.items : [];
 
     if (!items.length) {
-      return `
-        <div class="receipt-empty">Sem itens lançados.</div>
-      `;
+      return `<div class="receipt-empty">Sem itens lançados.</div>`;
     }
 
     return `
       <table class="receipt-items-table">
         <thead>
           <tr>
-            <th class="col-prod">PROD</th>
+            <th class="col-product">Produto</th>
             <th class="col-qtd">QTD</th>
             <th class="col-unit">VALOR</th>
             <th class="col-total">TOTAL</th>
@@ -63,7 +61,9 @@ export function createPrintModule(ctx) {
         <tbody>
           ${items.map((item) => `
             <tr>
-              <td class="col-prod" title="${escapeHtml(item.name || '')}">${escapeHtml(truncateText(item.name || '', 26))}</td>
+              <td class="col-product" title="${escapeHtml(item.name || '')}">
+                ${escapeHtml(truncateText(item.name || '-', 30))}
+              </td>
               <td class="col-qtd">${Number(item.quantity || 0)}</td>
               <td class="col-unit">${escapeHtml(formatMoney(item.unitPrice || 0))}</td>
               <td class="col-total">${escapeHtml(formatMoney(item.total || 0))}</td>
@@ -81,6 +81,8 @@ export function createPrintModule(ctx) {
     const address = state.settings?.address || '';
     const phone = state.settings?.phone || state.settings?.storePhone || '';
     const warrantyText = state.settings?.warrantyText || '';
+    const printedAt = formatDateTime();
+    const saleDateTime = sale.createdAt ? formatDateTime(sale.createdAt) : printedAt;
 
     return `
       <!doctype html>
@@ -129,7 +131,7 @@ export function createPrintModule(ctx) {
             .store-name {
               font-size: ${compactMode ? '16px' : '18px'};
               font-weight: 700;
-              margin-bottom: 2px;
+              margin-bottom: 3px;
             }
 
             .store-meta {
@@ -138,32 +140,38 @@ export function createPrintModule(ctx) {
               word-break: break-word;
             }
 
+            .receipt-title {
+              font-size: ${compactMode ? '13px' : '14px'};
+              font-weight: 700;
+              margin-top: 6px;
+              text-transform: uppercase;
+            }
+
             .divider {
               border-top: 1px dashed var(--line);
               margin: 8px 0;
             }
 
-            .receipt-title {
-              font-size: ${compactMode ? '13px' : '14px'};
-              font-weight: 700;
-              margin: 6px 0;
-              text-transform: uppercase;
+            .meta-grid {
+              display: grid;
+              gap: 4px;
             }
 
-            .receipt-datetime {
-              font-weight: 600;
-              margin-bottom: 6px;
-            }
-
-            .receipt-meta-line {
+            .meta-line {
               display: flex;
               justify-content: space-between;
+              align-items: flex-start;
               gap: 8px;
-              margin: 2px 0;
             }
 
-            .receipt-meta-line span:last-child {
+            .meta-line .label {
+              font-weight: 700;
+            }
+
+            .meta-line .value {
               text-align: right;
+              flex: 1;
+              word-break: break-word;
             }
 
             .receipt-items-table {
@@ -183,14 +191,15 @@ export function createPrintModule(ctx) {
             .receipt-items-table th {
               font-size: ${compactMode ? '10px' : '11px'};
               text-align: left;
+              font-weight: 700;
             }
 
             .receipt-items-table td {
               font-size: ${compactMode ? '10px' : '11px'};
             }
 
-            .col-prod {
-              width: 40%;
+            .col-product {
+              width: 42%;
               text-align: left;
               word-break: break-word;
             }
@@ -202,13 +211,13 @@ export function createPrintModule(ctx) {
             }
 
             .col-unit {
-              width: 22%;
+              width: 21%;
               text-align: right;
               white-space: nowrap;
             }
 
             .col-total {
-              width: 26%;
+              width: 25%;
               text-align: right;
               white-space: nowrap;
             }
@@ -238,6 +247,7 @@ export function createPrintModule(ctx) {
               color: var(--muted);
               white-space: pre-wrap;
               word-break: break-word;
+              text-align: center;
             }
 
             @media print {
@@ -258,20 +268,29 @@ export function createPrintModule(ctx) {
             <div class="center">
               <div class="store-name">${escapeHtml(storeName)}</div>
               ${address ? `<div class="store-meta">${escapeHtml(address)}</div>` : ''}
-              ${phone ? `<div class="store-meta">Tel: ${escapeHtml(phone)}</div>` : ''}
+              ${phone ? `<div class="store-meta">Telefone: ${escapeHtml(phone)}</div>` : ''}
               <div class="receipt-title">Cupom não fiscal</div>
-              <div class="receipt-datetime">${escapeHtml(formatDateTime())}</div>
             </div>
 
             <div class="divider"></div>
 
-            <div class="receipt-meta-line">
-              <span>Cliente</span>
-              <span>${escapeHtml(sale.customerName || 'Balcão')}</span>
-            </div>
-            <div class="receipt-meta-line">
-              <span>Pagamento</span>
-              <span>${escapeHtml(sale.paymentMethod || '-')}</span>
+            <div class="meta-grid">
+              <div class="meta-line">
+                <span class="label">Data/Hora:</span>
+                <span class="value">${escapeHtml(saleDateTime)}</span>
+              </div>
+              <div class="meta-line">
+                <span class="label">Impresso em:</span>
+                <span class="value">${escapeHtml(printedAt)}</span>
+              </div>
+              <div class="meta-line">
+                <span class="label">Cliente:</span>
+                <span class="value">${escapeHtml(sale.customerName || 'Balcão')}</span>
+              </div>
+              <div class="meta-line">
+                <span class="label">Pagamento:</span>
+                <span class="value">${escapeHtml(sale.paymentMethod || '-')}</span>
+              </div>
             </div>
 
             <div class="divider"></div>
@@ -307,6 +326,9 @@ export function createPrintModule(ctx) {
               <div class="divider"></div>
               <div class="footer">${escapeHtml(warrantyText)}</div>
             ` : ''}
+
+            <div class="divider"></div>
+            <div class="footer">Obrigado pela preferência</div>
           </div>
         </body>
       </html>

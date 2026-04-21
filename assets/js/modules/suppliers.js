@@ -72,7 +72,9 @@ export function createSuppliersModule(ctx) {
     isSavingSupplier = true;
 
     try {
-      const form = tabEls.suppliers.querySelector('#supplier-form');
+      const form = document.querySelector('#supplier-form');
+      if (!form) return;
+
       const payload = Object.fromEntries(new FormData(form).entries());
 
       payload.active = String(payload.active || 'true') === 'true';
@@ -114,7 +116,7 @@ export function createSuppliersModule(ctx) {
         showToast('Fornecedor cadastrado.', 'success');
       }
 
-      form.reset();
+      closeSupplierFormModal();
       render();
     } finally {
       isSavingSupplier = false;
@@ -140,10 +142,6 @@ export function createSuppliersModule(ctx) {
     });
 
     showToast('Fornecedor inativado.', 'success');
-
-    if (state.editingSupplierId === supplierId) {
-      state.editingSupplierId = null;
-    }
   }
 
   async function reactivateSupplier(supplierId) {
@@ -165,10 +163,84 @@ export function createSuppliersModule(ctx) {
     });
 
     showToast('Fornecedor reativado.', 'success');
+  }
 
-    if (state.editingSupplierId === supplierId) {
+  function getSupplierFormHtml() {
+    return `
+      <div class="form-modal-body">
+        <div class="section-header">
+          <h2>${state.editingSupplierId ? 'Editar fornecedor' : 'Novo fornecedor'}</h2>
+          <span class="muted">Cadastro em modal.</span>
+        </div>
+
+        <form id="supplier-form" class="form-grid mobile-optimized">
+          <div class="form-section" style="grid-column:1 / -1;">
+            <div class="form-section-title">
+              <h3>Dados principais</h3>
+              <span>Identificação e contato</span>
+            </div>
+            <div class="soft-divider"></div>
+
+            <div class="form-grid">
+              <label>Nome<input name="name" required /></label>
+              <label>Contato<input name="contactName" /></label>
+              <label>Telefone<input name="phone" /></label>
+              <label>E-mail<input name="email" type="email" /></label>
+              <label>Documento<input name="document" /></label>
+              <label>Status
+                <select name="active">
+                  <option value="true">Ativo</option>
+                  <option value="false">Inativo</option>
+                </select>
+              </label>
+              <label style="grid-column:1 / -1;">Endereço<input name="address" /></label>
+              <label style="grid-column:1 / -1;">Observações<textarea name="notes"></textarea></label>
+            </div>
+          </div>
+
+          <div class="form-actions" style="grid-column:1 / -1;">
+            <button class="btn btn-primary" type="submit">${state.editingSupplierId ? 'Salvar fornecedor' : 'Cadastrar fornecedor'}</button>
+            <button class="btn btn-secondary" type="button" id="supplier-form-cancel-btn">Cancelar</button>
+          </div>
+        </form>
+      </div>
+    `;
+  }
+
+  function openSupplierFormModal(supplierId = null) {
+    state.editingSupplierId = supplierId;
+    const modalRoot = document.getElementById('modal-root');
+    if (!modalRoot) return;
+
+    modalRoot.innerHTML = `
+      <div class="modal-backdrop" id="supplier-form-modal-backdrop">
+        <div class="modal-card form-modal-card">
+          ${getSupplierFormHtml()}
+        </div>
+      </div>
+    `;
+
+    const closeModal = () => {
+      modalRoot.innerHTML = '';
       state.editingSupplierId = null;
-    }
+      render();
+    };
+
+    modalRoot.querySelector('#supplier-form-modal-backdrop')?.addEventListener('click', (event) => {
+      if (event.target.id === 'supplier-form-modal-backdrop') closeModal();
+    });
+
+    modalRoot.querySelector('#supplier-form-cancel-btn')?.addEventListener('click', closeModal);
+
+    const form = modalRoot.querySelector('#supplier-form');
+    fillForm(form, getEditingSupplier());
+    bindSubmitGuard(form, saveSupplier, { busyLabel: 'Salvando...' });
+  }
+
+  function closeSupplierFormModal() {
+    const modalRoot = document.getElementById('modal-root');
+    if (modalRoot) modalRoot.innerHTML = '';
+    state.editingSupplierId = null;
   }
 
   function openSupplierActions(supplierId) {
@@ -178,41 +250,16 @@ export function createSuppliersModule(ctx) {
     if (supplier.active === false) {
       window.openActionsSheet?.('Ações do fornecedor', [
         {
+          label: 'Editar',
+          className: 'btn btn-secondary',
+          onClick: async () => openSupplierFormModal(supplierId)
+        },
+        {
           label: 'Reativar',
           className: 'btn btn-secondary',
           onClick: async () => {
             await reactivateSupplier(supplierId);
-          }
-        },
-        {
-          label: 'Excluir',
-          className: 'btn btn-danger',
-          onClick: async () => {
-            window.openConfirmDeleteModal?.({
-              title: 'Excluir fornecedor',
-              message: 'Deseja realmente excluir este fornecedor? Ele deixará de aparecer nas listagens.',
-              onConfirm: async () => {
-                await updateByPath('suppliers', supplierId, {
-                  active: false,
-                  deleted: true
-                });
-
-                await auditModule.log({
-                  module: 'suppliers',
-                  action: 'delete',
-                  entityType: 'supplier',
-                  entityId: supplierId,
-                  entityLabel: supplier.name || '',
-                  description: 'Fornecedor excluído logicamente.'
-                });
-
-                showToast('Fornecedor excluído.', 'success');
-
-                if (state.editingSupplierId === supplierId) {
-                  state.editingSupplierId = null;
-                }
-              }
-            });
+            render();
           }
         }
       ]);
@@ -221,41 +268,16 @@ export function createSuppliersModule(ctx) {
 
     window.openActionsSheet?.('Ações do fornecedor', [
       {
+        label: 'Editar',
+        className: 'btn btn-secondary',
+        onClick: async () => openSupplierFormModal(supplierId)
+      },
+      {
         label: 'Inativar',
         className: 'btn btn-secondary',
         onClick: async () => {
           await inactivateSupplier(supplierId);
-        }
-      },
-      {
-        label: 'Excluir',
-        className: 'btn btn-danger',
-        onClick: async () => {
-          window.openConfirmDeleteModal?.({
-            title: 'Excluir fornecedor',
-            message: 'Deseja realmente excluir este fornecedor? Ele deixará de aparecer nas listagens.',
-            onConfirm: async () => {
-              await updateByPath('suppliers', supplierId, {
-                active: false,
-                deleted: true
-              });
-
-              await auditModule.log({
-                module: 'suppliers',
-                action: 'delete',
-                entityType: 'supplier',
-                entityId: supplierId,
-                entityLabel: supplier.name || '',
-                description: 'Fornecedor excluído logicamente.'
-              });
-
-              showToast('Fornecedor excluído.', 'success');
-
-              if (state.editingSupplierId === supplierId) {
-                state.editingSupplierId = null;
-              }
-            }
-          });
+          render();
         }
       }
     ]);
@@ -264,34 +286,16 @@ export function createSuppliersModule(ctx) {
   function renderSupplierActions(row) {
     return `
       <div class="actions-inline-compact">
-        <button
-          class="icon-action-btn"
-          type="button"
-          data-supplier-edit="${row.id}"
-          title="Editar"
-          aria-label="Editar"
-        >✏️</button>
-
-        <button
-          class="icon-action-btn"
-          type="button"
-          data-supplier-more="${row.id}"
-          title="Mais ações"
-          aria-label="Mais ações"
-        >⋯</button>
+        <button class="icon-action-btn" type="button" data-supplier-edit="${row.id}" title="Editar" aria-label="Editar">✏️</button>
+        <button class="icon-action-btn" type="button" data-supplier-more="${row.id}" title="Mais ações" aria-label="Mais ações">⋯</button>
       </div>
     `;
   }
 
   function bindEvents() {
-    bindSubmitGuard(tabEls.suppliers.querySelector('#supplier-form'), saveSupplier, {
-      busyLabel: 'Salvando...'
-    });
-
-    bindAsyncButton(tabEls.suppliers.querySelector('#supplier-reset-btn'), async () => {
-      state.editingSupplierId = null;
-      render();
-    }, { busyLabel: 'Limpando...' });
+    bindAsyncButton(tabEls.suppliers.querySelector('#open-supplier-form-btn'), async () => {
+      openSupplierFormModal(null);
+    }, { busyLabel: 'Abrindo...' });
 
     tabEls.suppliers.querySelector('#supplier-filter-apply')?.addEventListener('click', () => {
       filters.term = tabEls.suppliers.querySelector('#supplier-filter-term')?.value || '';
@@ -300,24 +304,16 @@ export function createSuppliersModule(ctx) {
     });
 
     bindAsyncButton(tabEls.suppliers.querySelector('#supplier-filter-clear'), async () => {
-      filters = {
-        term: '',
-        status: ''
-      };
+      filters = { term: '', status: '' };
       render();
     }, { busyLabel: 'Limpando...' });
 
     tabEls.suppliers.querySelectorAll('[data-supplier-edit]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        state.editingSupplierId = btn.dataset.supplierEdit;
-        render();
-      });
+      btn.addEventListener('click', () => openSupplierFormModal(btn.dataset.supplierEdit));
     });
 
     tabEls.suppliers.querySelectorAll('[data-supplier-more]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        openSupplierActions(btn.dataset.supplierMore);
-      });
+      btn.addEventListener('click', () => openSupplierActions(btn.dataset.supplierMore));
     });
   }
 
@@ -327,7 +323,6 @@ export function createSuppliersModule(ctx) {
       return;
     }
 
-    const editing = getEditingSupplier();
     const rows = getFilteredSuppliers();
     const summary = getSummary();
 
@@ -339,141 +334,71 @@ export function createSuppliersModule(ctx) {
           <div class="metric-card"><span>Inativos</span><strong>${summary.inactive}</strong></div>
         </div>
 
-        <div class="users-layout">
-          <div class="panel">
-            <div class="section-header">
-              <h2>${editing ? 'Editar fornecedor' : 'Cadastrar fornecedor'}</h2>
-              <span class="muted">${editing ? 'Atualize os dados do fornecedor.' : 'Cadastro de fornecedores.'}</span>
-            </div>
+        <div class="entity-toolbar panel">
+          <div>
+            <h2 style="margin:0 0 6px;">Fornecedores</h2>
+            <p class="muted">Cadastro em modal e tabela com rolagem interna.</p>
+          </div>
+          <div class="entity-toolbar-actions">
+            <button class="btn btn-primary" type="button" id="open-supplier-form-btn">Novo fornecedor</button>
+          </div>
+        </div>
 
-            <form id="supplier-form" class="form-grid mobile-optimized">
-              <div class="form-section" style="grid-column:1 / -1;">
-                <div class="form-section-title">
-                  <h3>1. Dados principais</h3>
-                  <span>Identificação e contato</span>
-                </div>
-                <div class="soft-divider"></div>
-
-                <div class="form-grid">
-                  <label>Nome
-                    <input name="name" required />
-                  </label>
-
-                  <label>Contato
-                    <input name="contactName" />
-                  </label>
-
-                  <label>Telefone
-                    <input name="phone" />
-                  </label>
-
-                  <label>E-mail
-                    <input name="email" type="email" />
-                  </label>
-
-                  <label>Documento
-                    <input name="document" />
-                  </label>
-
-                  <label>Status
-                    <select name="active">
-                      <option value="true">Ativo</option>
-                      <option value="false">Inativo</option>
-                    </select>
-                  </label>
-
-                  <label style="grid-column:1 / -1;">Endereço
-                    <input name="address" />
-                  </label>
-
-                  <label style="grid-column:1 / -1;">Observações
-                    <textarea name="notes"></textarea>
-                  </label>
-                </div>
-              </div>
-
-              <div class="form-actions" style="grid-column:1 / -1;">
-                <button class="btn btn-primary" type="submit">${editing ? 'Salvar fornecedor' : 'Cadastrar fornecedor'}</button>
-                <button class="btn btn-secondary" type="button" id="supplier-reset-btn">Limpar</button>
-              </div>
-            </form>
+        <div class="table-card">
+          <div class="section-header">
+            <h2>Lista de fornecedores</h2>
+            <span class="muted">${rows.length} resultado(s)</span>
           </div>
 
-          <div class="section-stack">
-            <div class="table-card">
-              <div class="section-header">
-                <h2>Fornecedores</h2>
-                <span class="muted">${rows.length} resultado(s)</span>
-              </div>
+          <div class="search-row" style="margin-bottom:14px;">
+            <input
+              id="supplier-filter-term"
+              placeholder="Buscar por nome, contato, telefone, e-mail ou documento"
+              value="${escapeHtml(filters.term)}"
+            />
+            <select id="supplier-filter-status">
+              <option value="">Todos os status</option>
+              <option value="ativo" ${filters.status === 'ativo' ? 'selected' : ''}>Ativo</option>
+              <option value="inativo" ${filters.status === 'inativo' ? 'selected' : ''}>Inativo</option>
+            </select>
+            <button class="btn btn-secondary" type="button" id="supplier-filter-apply">Filtrar</button>
+            <button class="btn btn-secondary" type="button" id="supplier-filter-clear">Limpar</button>
+          </div>
 
-              <div class="search-row" style="margin-bottom:14px;">
-                <input
-                  id="supplier-filter-term"
-                  placeholder="Buscar por nome, contato, telefone, e-mail ou documento"
-                  value="${escapeHtml(filters.term)}"
-                />
-                <select id="supplier-filter-status">
-                  <option value="">Todos os status</option>
-                  <option value="ativo" ${filters.status === 'ativo' ? 'selected' : ''}>Ativo</option>
-                  <option value="inativo" ${filters.status === 'inativo' ? 'selected' : ''}>Inativo</option>
-                </select>
-                <button class="btn btn-secondary" type="button" id="supplier-filter-apply">Filtrar</button>
-                <button class="btn btn-secondary" type="button" id="supplier-filter-clear">Limpar</button>
-              </div>
-
-              <div class="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Nome</th>
-                      <th>Contato</th>
-                      <th>Telefone</th>
-                      <th>E-mail</th>
-                      <th>Documento</th>
-                      <th>Status</th>
-                      <th>Ações</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    ${rows.map((row) => `
-                      <tr>
-                        <td>${escapeHtml(row.name || '-')}</td>
-                        <td>${escapeHtml(row.contactName || '-')}</td>
-                        <td>${escapeHtml(row.phone || '-')}</td>
-                        <td>${escapeHtml(row.email || '-')}</td>
-                        <td>${escapeHtml(row.document || '-')}</td>
-                        <td>${row.active === false ? '<span class="tag warning">Inativo</span>' : '<span class="tag success">Ativo</span>'}</td>
-                        <td>${renderSupplierActions(row)}</td>
-                      </tr>
-                    `).join('') || '<tr><td colspan="7">Nenhum fornecedor encontrado.</td></tr>'}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <div class="panel summary-highlight">
-              <div class="section-header">
-                <h2>Resumo rápido</h2>
-                <span class="badge-soft">Fornecedores</span>
-              </div>
-
-              <div class="cards-grid" style="grid-template-columns:1fr; gap:12px;">
-                <div class="compact-card"><span class="muted">Ativos</span><strong>${summary.active}</strong></div>
-                <div class="compact-card"><span class="muted">Inativos</span><strong>${summary.inactive}</strong></div>
-                <div class="compact-card"><span class="muted">Total</span><strong>${summary.total}</strong></div>
-              </div>
-            </div>
+          <div class="table-wrap scroll-dual">
+            <table>
+              <thead>
+                <tr>
+                  <th>Nome</th>
+                  <th>Contato</th>
+                  <th>Telefone</th>
+                  <th>E-mail</th>
+                  <th>Documento</th>
+                  <th>Status</th>
+                  <th>Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows.map((row) => `
+                  <tr>
+                    <td>${escapeHtml(row.name || '-')}</td>
+                    <td>${escapeHtml(row.contactName || '-')}</td>
+                    <td>${escapeHtml(row.phone || '-')}</td>
+                    <td>${escapeHtml(row.email || '-')}</td>
+                    <td>${escapeHtml(row.document || '-')}</td>
+                    <td>${row.active === false ? '<span class="tag warning">Inativo</span>' : '<span class="tag success">Ativo</span>'}</td>
+                    <td>${renderSupplierActions(row)}</td>
+                  </tr>
+                `).join('') || '<tr><td colspan="7">Nenhum fornecedor encontrado.</td></tr>'}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>
     `;
 
-    const form = tabEls.suppliers.querySelector('#supplier-form');
-    fillForm(form, editing);
     bindEvents();
   }
 
-  return {
-    render
-  };
+  return { render };
 }

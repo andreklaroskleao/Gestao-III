@@ -1,7 +1,7 @@
 import { escapeHtml } from './ui.js';
 
 export function createDashboardModule(ctx) {
-  const { state, tabEls, currency, formatDate, formatDateTime } = ctx;
+  const { state, tabEls, currency, formatDateTime } = ctx;
 
   function renderSimpleList(items) {
     if (!items.length) {
@@ -9,10 +9,10 @@ export function createDashboardModule(ctx) {
     }
 
     return `
-      <div class="stack-list slim-list">
+      <div class="stack-list slim-list dashboard-list-scroll">
         ${items.map((text) => `
           <div class="list-item">
-            <strong>${escapeHtml(text)}</strong>
+            <span>${escapeHtml(text)}</span>
           </div>
         `).join('')}
       </div>
@@ -20,21 +20,24 @@ export function createDashboardModule(ctx) {
   }
 
   function getLowStockProducts() {
-    const threshold = Number(state.settings.lowStockThreshold || 5);
-
+    const threshold = Number(state.settings?.lowStockThreshold || 5);
     return (state.products || []).filter((item) => {
-      return item.status !== 'inativo' && Number(item.quantity || 0) <= threshold;
+      return item.deleted !== true
+        && item.status !== 'inativo'
+        && Number(item.quantity || 0) <= threshold;
     });
   }
 
   function getTopSelling(limit = 5) {
     const map = new Map();
 
-    (state.sales || []).forEach((sale) => {
-      (sale.items || []).forEach((item) => {
-        map.set(item.name, (map.get(item.name) || 0) + Number(item.quantity || 0));
+    (state.sales || [])
+      .filter((sale) => sale.deleted !== true)
+      .forEach((sale) => {
+        (sale.items || []).forEach((item) => {
+          map.set(item.name, (map.get(item.name) || 0) + Number(item.quantity || 0));
+        });
       });
-    });
 
     return [...map.entries()]
       .map(([name, qty]) => ({ name, qty }))
@@ -47,6 +50,7 @@ export function createDashboardModule(ctx) {
     const soldMap = new Map(sold.map((item) => [item.name, item.qty]));
 
     return (state.products || [])
+      .filter((item) => item.deleted !== true)
       .map((item) => ({ name: item.name, qty: soldMap.get(item.name) || 0 }))
       .sort((a, b) => a.qty - b.qty)
       .slice(0, limit);
@@ -67,6 +71,7 @@ export function createDashboardModule(ctx) {
     const today = new Date();
 
     return (state.sales || []).filter((sale) => {
+      if (sale.deleted === true) return false;
       const saleDate = getSalesDate(sale.createdAt);
       return saleDate && isSameDay(saleDate, today);
     });
@@ -76,6 +81,7 @@ export function createDashboardModule(ctx) {
     const today = new Date();
 
     return (state.sales || []).filter((sale) => {
+      if (sale.deleted === true) return false;
       const saleDate = getSalesDate(sale.createdAt);
       return saleDate
         && saleDate.getFullYear() === today.getFullYear()
@@ -87,6 +93,7 @@ export function createDashboardModule(ctx) {
     const today = new Date();
 
     return (state.deliveries || []).filter((item) => {
+      if (item.deleted === true) return false;
       const raw = item.scheduledAt?.toDate ? item.scheduledAt.toDate() : new Date(item.scheduledAt || 0);
       return !Number.isNaN(raw.getTime()) && isSameDay(raw, today);
     });
@@ -94,7 +101,8 @@ export function createDashboardModule(ctx) {
 
   function getPendingDeliveries() {
     return (state.deliveries || []).filter((item) => {
-      return ['Agendado', 'Em rota', 'Reagendado', 'Recolhimento'].includes(item.status);
+      return item.deleted !== true
+        && ['Agendado', 'Em rota', 'Reagendado', 'Recolhimento'].includes(item.status);
     });
   }
 
@@ -111,12 +119,10 @@ export function createDashboardModule(ctx) {
       nextDay.setDate(day.getDate() + 1);
 
       const total = (state.sales || []).reduce((sum, sale) => {
+        if (sale.deleted === true) return sum;
         const saleDate = getSalesDate(sale.createdAt);
         if (!saleDate) return sum;
-
-        return saleDate >= day && saleDate < nextDay
-          ? sum + Number(sale.total || 0)
-          : sum;
+        return saleDate >= day && saleDate < nextDay ? sum + Number(sale.total || 0) : sum;
       }, 0);
 
       result.push({
@@ -134,15 +140,10 @@ export function createDashboardModule(ctx) {
 
     function shortCurrency(value) {
       const amount = Number(value || 0);
-
       if (amount >= 1000) {
         return `R$ ${(amount / 1000).toFixed(1).replace('.', ',')}k`;
       }
-
-      return amount.toLocaleString('pt-BR', {
-        style: 'currency',
-        currency: 'BRL'
-      });
+      return amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
     }
 
     return `
@@ -154,21 +155,11 @@ export function createDashboardModule(ctx) {
 
           return `
             <div class="dashboard-sales-7d-col">
-              <div class="dashboard-sales-7d-value ${isHighest ? 'is-highlight' : ''}">
-                ${labelValue}
-              </div>
-
+              <div class="dashboard-sales-7d-value ${isHighest ? 'is-highlight' : ''}">${labelValue}</div>
               <div class="dashboard-sales-7d-bar-wrap">
-                <div
-                  class="dashboard-sales-7d-bar ${isHighest ? 'is-highlight' : ''}"
-                  style="height:${height}px;"
-                  title="${labelValue} em ${item.label}"
-                ></div>
+                <div class="dashboard-sales-7d-bar ${isHighest ? 'is-highlight' : ''}" style="height:${height}px;"></div>
               </div>
-
-              <div class="dashboard-sales-7d-label">
-                ${item.label}
-              </div>
+              <div class="dashboard-sales-7d-label">${item.label}</div>
             </div>
           `;
         }).join('')}
@@ -176,196 +167,112 @@ export function createDashboardModule(ctx) {
     `;
   }
 
-  function getFinancialSummary() {
-    const accounts = state.accountsReceivable || [];
-    const cashSessions = state.cashSessions || [];
-
-    const openReceivables = accounts.reduce((sum, item) => sum + Number(item.openAmount || 0), 0);
-    const totalReceived = accounts.reduce((sum, item) => sum + Number(item.receivedAmount || 0), 0);
-
-    const overdueReceivables = accounts.reduce((sum, item) => {
-      if (!item.dueDate || Number(item.openAmount || 0) <= 0) return sum;
-
-      const due = new Date(`${item.dueDate}T00:00:00`);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      return due < today ? sum + Number(item.openAmount || 0) : sum;
-    }, 0);
-
-    const dueSoonCount = accounts.filter((item) => {
-      if (!item.dueDate || Number(item.openAmount || 0) <= 0) return false;
-
-      const due = new Date(`${item.dueDate}T00:00:00`);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-
-      const diff = Math.round((due.getTime() - today.getTime()) / 86400000);
-      return diff >= 0 && diff <= 3;
-    }).length;
-
-    const latestClosedCash = [...cashSessions]
-      .filter((item) => item.status === 'closed')
-      .sort((a, b) => {
-        const da = a.closedAt?.toDate ? a.closedAt.toDate().getTime() : new Date(a.closedAt || 0).getTime();
-        const db = b.closedAt?.toDate ? b.closedAt.toDate().getTime() : new Date(b.closedAt || 0).getTime();
-        return db - da;
-      })[0];
-
-    return {
-      openReceivables,
-      totalReceived,
-      overdueReceivables,
-      dueSoonCount,
-      latestCashClosed: Number(latestClosedCash?.closingAmount || 0),
-      latestCashDifference: Number(latestClosedCash?.difference || 0)
-    };
-  }
-
-  function getDueSoonList(limit = 5) {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    return (state.accountsReceivable || [])
-      .filter((item) => Number(item.openAmount || 0) > 0 && item.dueDate)
-      .map((item) => {
-        const due = new Date(`${item.dueDate}T00:00:00`);
-        const diff = Math.round((due.getTime() - today.getTime()) / 86400000);
-        return { ...item, diff };
-      })
-      .filter((item) => item.diff <= 3)
-      .sort((a, b) => a.diff - b.diff)
-      .slice(0, limit);
-  }
-
-  function renderLatestSales() {
-    const rows = (state.sales || []).slice(0, 6);
-
-    if (!rows.length) {
-      return '<div class="empty-state">Nenhuma venda registrada.</div>';
-    }
-
-    return `
-      <div class="stack-list slim-list">
-        ${rows.map((sale) => `
-          <div class="list-item">
-            <strong>${escapeHtml(sale.customerName || 'Venda balcão')}</strong>
-            <span>${currency(sale.total)} · ${formatDateTime(sale.createdAt)} · ${escapeHtml(sale.paymentMethod || '-')}</span>
-          </div>
-        `).join('')}
-      </div>
-    `;
-  }
-
   function render() {
-    const lowStock = getLowStockProducts();
     const todaySales = getTodaySales();
     const monthSales = getMonthSales();
-    const pendingDeliveries = getPendingDeliveries();
     const todayDeliveries = getTodayDeliveries();
+    const pendingDeliveries = getPendingDeliveries();
+    const lowStock = getLowStockProducts();
+    const topSelling = getTopSelling(8);
+    const lowSelling = getLowSelling(8);
+    const last7Days = getLast7DaysSales();
 
-    const totalStock = (state.products || []).reduce((sum, item) => sum + Number(item.quantity || 0), 0);
-    const todayRevenue = todaySales.reduce((sum, sale) => sum + Number(sale.total || 0), 0);
-    const monthRevenue = monthSales.reduce((sum, sale) => sum + Number(sale.total || 0), 0);
-    const todayTicketAverage = todaySales.length ? todayRevenue / todaySales.length : 0;
-
-    const sales7Days = getLast7DaysSales();
-    const financial = getFinancialSummary();
-    const dueSoonList = getDueSoonList();
+    const todaySalesTotal = todaySales.reduce((sum, sale) => sum + Number(sale.total || 0), 0);
+    const monthSalesTotal = monthSales.reduce((sum, sale) => sum + Number(sale.total || 0), 0);
 
     tabEls.dashboard.innerHTML = `
       <div class="section-stack">
         <div class="cards-grid">
-          <div class="metric-card"><span>Faturamento de hoje</span><strong>${currency(todayRevenue)}</strong></div>
-          <div class="metric-card"><span>Faturamento do mês</span><strong>${currency(monthRevenue)}</strong></div>
-          <div class="metric-card"><span>Vendas de hoje</span><strong>${todaySales.length}</strong></div>
-          <div class="metric-card"><span>Ticket médio de hoje</span><strong>${currency(todayTicketAverage)}</strong></div>
-          <div class="metric-card"><span>Itens em estoque</span><strong>${totalStock}</strong></div>
-          <div class="metric-card"><span>Alertas de estoque</span><strong>${lowStock.length}</strong></div>
-          <div class="metric-card"><span>Entregas pendentes</span><strong>${pendingDeliveries.length}</strong></div>
-          <div class="metric-card"><span>Entregas de hoje</span><strong>${todayDeliveries.length}</strong></div>
-          <div class="metric-card"><span>Contas em aberto</span><strong>${currency(financial.openReceivables)}</strong></div>
-          <div class="metric-card"><span>Total recebido</span><strong>${currency(financial.totalReceived)}</strong></div>
-          <div class="metric-card"><span>Contas vencidas</span><strong>${currency(financial.overdueReceivables)}</strong></div>
-          <div class="metric-card"><span>Vencendo em até 3 dias</span><strong>${financial.dueSoonCount}</strong></div>
-        </div>
-
-        <div class="grid-2">
-          <div class="table-card">
-            <div class="section-header">
-              <h2>Vendas dos últimos 7 dias</h2>
-              <span class="muted">Visão rápida de faturamento</span>
-            </div>
-            ${renderMiniChart(sales7Days)}
+          <div class="metric-card">
+            <span>Vendas hoje</span>
+            <strong>${currency(todaySalesTotal)}</strong>
           </div>
 
-          <div class="table-card">
-            <div class="section-header">
-              <h2>Últimas vendas</h2>
-              <span class="muted">Resumo em tempo real</span>
-            </div>
-            ${renderLatestSales()}
+          <div class="metric-card">
+            <span>Vendas no mês</span>
+            <strong>${currency(monthSalesTotal)}</strong>
+          </div>
+
+          <div class="metric-card">
+            <span>Entregas hoje</span>
+            <strong>${todayDeliveries.length}</strong>
+          </div>
+
+          <div class="metric-card">
+            <span>Estoque baixo</span>
+            <strong>${lowStock.length}</strong>
           </div>
         </div>
 
-        <div class="grid-2">
-          <div class="table-card">
-            <div class="section-header">
-              <h2>Entregas e recolhimentos</h2>
-              <span class="muted">${pendingDeliveries.length} em aberto</span>
-            </div>
-            <div class="stack-list slim-list">
-              ${pendingDeliveries.slice(0, 6).map((item) => `
-                <div class="list-item">
-                  <strong>${escapeHtml(item.customerName || item.clientName || '-')}</strong>
-                  <span>${escapeHtml(item.address || '-')} · ${formatDate(item.scheduledAt)} ${escapeHtml(item.scheduledTime || item.time || '')} · ${escapeHtml(item.status || '-')}</span>
-                </div>
-              `).join('') || '<div class="empty-state">Sem atendimentos pendentes.</div>'}
-            </div>
+        <div class="table-card">
+          <div class="section-header">
+            <h2>Vendas dos últimos 7 dias</h2>
+            <span class="muted">Visão resumida</span>
           </div>
-
-          <div class="table-card">
-            <div class="section-header">
-              <h2>Resumo financeiro</h2>
-              <span class="muted">Último caixa fechado: ${currency(financial.latestCashClosed)}</span>
-            </div>
-            <div class="kpi-inline">
-              <div class="compact-card"><span class="muted">Último caixa</span><strong>${currency(financial.latestCashClosed)}</strong></div>
-              <div class="compact-card"><span class="muted">Diferença</span><strong>${currency(financial.latestCashDifference)}</strong></div>
-              <div class="compact-card"><span class="muted">Contas vencendo</span><strong>${financial.dueSoonCount}</strong></div>
-            </div>
-          </div>
+          ${renderMiniChart(last7Days)}
         </div>
 
-        <div class="grid-2">
+        <div class="dashboard-card-grid">
           <div class="table-card">
             <div class="section-header">
               <h2>Produtos com estoque baixo</h2>
+              <span class="muted">${lowStock.length} item(ns)</span>
             </div>
-            ${renderSimpleList(lowStock.map((item) => `${item.name} · ${item.quantity} un.`))}
+
+            <div class="dashboard-list-scroll">
+              ${lowStock.length
+                ? `
+                  <div class="stack-list slim-list">
+                    ${lowStock.map((item) => `
+                      <div class="list-item">
+                        <strong>${escapeHtml(item.name || '-')}</strong>
+                        <span>Estoque atual: ${Number(item.quantity || 0)}</span>
+                      </div>
+                    `).join('')}
+                  </div>
+                `
+                : '<div class="empty-state">Nenhum produto em estoque baixo.</div>'
+              }
+            </div>
+          </div>
+
+          <div class="table-card">
+            <div class="section-header">
+              <h2>Entregas pendentes</h2>
+              <span class="muted">${pendingDeliveries.length} item(ns)</span>
+            </div>
+
+            <div class="dashboard-list-scroll">
+              ${pendingDeliveries.length
+                ? `
+                  <div class="stack-list slim-list">
+                    ${pendingDeliveries.map((item) => `
+                      <div class="list-item">
+                        <strong>${escapeHtml(item.customerName || 'Cliente')}</strong>
+                        <span>${escapeHtml(item.status || '-')} · ${item.scheduledAt ? formatDateTime(item.scheduledAt) : '-'}</span>
+                      </div>
+                    `).join('')}
+                  </div>
+                `
+                : '<div class="empty-state">Nenhuma entrega pendente.</div>'
+              }
+            </div>
           </div>
 
           <div class="table-card">
             <div class="section-header">
               <h2>Mais vendidos</h2>
+              <span class="muted">${topSelling.length} item(ns)</span>
             </div>
-            ${renderSimpleList(getTopSelling().map((item) => `${item.name} · ${item.qty} un.`))}
-          </div>
-        </div>
-
-        <div class="grid-2">
-          <div class="table-card">
-            <div class="section-header">
-              <h2>Baixa saída</h2>
-            </div>
-            ${renderSimpleList(getLowSelling().map((item) => `${item.name} · ${item.qty} un.`))}
+            ${renderSimpleList(topSelling.map((item) => `${item.name} · ${item.qty} un.`))}
           </div>
 
           <div class="table-card">
             <div class="section-header">
-              <h2>Contas vencendo</h2>
+              <h2>Menor giro</h2>
+              <span class="muted">${lowSelling.length} item(ns)</span>
             </div>
-            ${renderSimpleList(dueSoonList.map((item) => `${item.clientName || 'Cliente'} · ${currency(item.openAmount || 0)} · ${item.dueDate}`))}
+            ${renderSimpleList(lowSelling.map((item) => `${item.name} · ${item.qty} un.`))}
           </div>
         </div>
       </div>

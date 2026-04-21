@@ -447,7 +447,7 @@ export function createSettingsModule(ctx) {
             <button class="btn btn-secondary" type="button" id="audit-filter-clear">Limpar</button>
           </div>
 
-          <div class="settings-audit-scroll">
+          <div class="settings-audit-scroll settings-audit-host">
             ${auditModule.renderAuditTable(auditFilters, shouldShowAuditLogs, 40)}
           </div>
         </div>

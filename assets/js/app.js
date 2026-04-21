@@ -320,7 +320,8 @@ const usersModule = createUsersModule({
   updateManagedUser,
   deleteManagedUser,
   listUsers,
-  auditModule
+  auditModule,
+  hasPermission
 });
 
 const suppliersModule = createSuppliersModule({

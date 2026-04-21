@@ -36,10 +36,6 @@ export function createClientsTabModule(ctx) {
     });
   }
 
-  function getEditingClient() {
-    return getRows().find((item) => item.id === state.editingClientId) || null;
-  }
-
   function getSummary() {
     const rows = getRows();
 
@@ -51,12 +47,50 @@ export function createClientsTabModule(ctx) {
     };
   }
 
+  function openClientFormModal(clientId = null) {
+    state.editingClientId = clientId;
+    const modalRoot = document.getElementById('modal-root');
+    if (!modalRoot) return;
+
+    modalRoot.innerHTML = `
+      <div class="modal-backdrop" id="client-form-modal-backdrop">
+        <div class="modal-card form-modal-card">
+          ${clientsModule.renderClientForm?.(clientId) || ''}
+        </div>
+      </div>
+    `;
+
+    const closeModal = () => {
+      modalRoot.innerHTML = '';
+      state.editingClientId = null;
+      render();
+    };
+
+    modalRoot.querySelector('#client-form-modal-backdrop')?.addEventListener('click', (event) => {
+      if (event.target.id === 'client-form-modal-backdrop') {
+        closeModal();
+      }
+    });
+
+    const cancelBtn = modalRoot.querySelector('#client-reset-btn');
+    cancelBtn?.addEventListener('click', () => {
+      closeModal();
+    });
+
+    window.addEventListener('clients:changed', closeModal, { once: true });
+  }
+
   function openClientActions(clientId) {
     const client = getRows().find((item) => item.id === clientId);
     if (!client) return;
 
     if (client.active === false) {
       window.openActionsSheet?.('Ações do cliente', [
+        {
+          label: 'Editar',
+          className: 'btn btn-secondary',
+          onClick: async () => openClientFormModal(clientId)
+        },
         {
           label: 'Reativar',
           className: 'btn btn-secondary',
@@ -67,10 +101,7 @@ export function createClientsTabModule(ctx) {
             });
 
             showToast('Cliente reativado.', 'success');
-
-            if (state.editingClientId === clientId) {
-              state.editingClientId = null;
-            }
+            render();
           }
         },
         {
@@ -87,10 +118,7 @@ export function createClientsTabModule(ctx) {
                 });
 
                 showToast('Cliente excluído.', 'success');
-
-                if (state.editingClientId === clientId) {
-                  state.editingClientId = null;
-                }
+                render();
               }
             });
           }
@@ -101,15 +129,17 @@ export function createClientsTabModule(ctx) {
 
     window.openActionsSheet?.('Ações do cliente', [
       {
+        label: 'Editar',
+        className: 'btn btn-secondary',
+        onClick: async () => openClientFormModal(clientId)
+      },
+      {
         label: 'Inativar',
         className: 'btn btn-secondary',
         onClick: async () => {
           await clientsModule.inactivateClient(clientId);
           showToast('Cliente inativado.', 'success');
-
-          if (state.editingClientId === clientId) {
-            state.editingClientId = null;
-          }
+          render();
         }
       },
       {
@@ -126,10 +156,7 @@ export function createClientsTabModule(ctx) {
               });
 
               showToast('Cliente excluído.', 'success');
-
-              if (state.editingClientId === clientId) {
-                state.editingClientId = null;
-              }
+              render();
             }
           });
         }
@@ -168,6 +195,10 @@ export function createClientsTabModule(ctx) {
   }
 
   function bindEvents() {
+    bindAsyncButton(tabEls.clients.querySelector('#open-client-form-btn'), async () => {
+      openClientFormModal(null);
+    }, { busyLabel: 'Abrindo...' });
+
     tabEls.clients.querySelector('#client-filter-apply')?.addEventListener('click', () => {
       filters.term = tabEls.clients.querySelector('#client-filter-term')?.value || '';
       filters.status = tabEls.clients.querySelector('#client-filter-status')?.value || '';
@@ -175,18 +206,12 @@ export function createClientsTabModule(ctx) {
     });
 
     bindAsyncButton(tabEls.clients.querySelector('#client-filter-clear'), async () => {
-      filters = {
-        term: '',
-        status: ''
-      };
+      filters = { term: '', status: '' };
       render();
     }, { busyLabel: 'Limpando...' });
 
     tabEls.clients.querySelectorAll('[data-client-edit]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        state.editingClientId = btn.dataset.clientEdit;
-        render();
-      });
+      btn.addEventListener('click', () => openClientFormModal(btn.dataset.clientEdit));
     });
 
     tabEls.clients.querySelectorAll('[data-client-account]').forEach((btn) => {
@@ -220,60 +245,64 @@ export function createClientsTabModule(ctx) {
           <div class="metric-card"><span>Em aberto</span><strong>${Number(summary.receivables || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</strong></div>
         </div>
 
-        <div class="section-stack">
-          <div class="panel">
-            ${clientsModule.renderClientForm?.(state.editingClientId) || ''}
+        <div class="entity-toolbar panel">
+          <div>
+            <h2 style="margin:0 0 6px;">Clientes</h2>
+            <p class="muted">Cadastro em modal e lista com rolagem interna.</p>
+          </div>
+          <div class="entity-toolbar-actions">
+            <button class="btn btn-primary" type="button" id="open-client-form-btn">Novo cliente</button>
+          </div>
+        </div>
+
+        <div class="table-card">
+          <div class="section-header">
+            <h2>Lista de clientes</h2>
+            <span class="muted">${rows.length} resultado(s)</span>
           </div>
 
-          <div class="table-card">
-            <div class="section-header">
-              <h2>Clientes</h2>
-              <span class="muted">${rows.length} resultado(s)</span>
-            </div>
+          <div class="search-row" style="margin-bottom:14px;">
+            <input
+              id="client-filter-term"
+              placeholder="Buscar por nome, telefone, e-mail, documento ou endereço"
+              value="${escapeHtml(filters.term)}"
+            />
 
-            <div class="search-row" style="margin-bottom:14px;">
-              <input
-                id="client-filter-term"
-                placeholder="Buscar por nome, telefone, e-mail, documento ou endereço"
-                value="${escapeHtml(filters.term)}"
-              />
+            <select id="client-filter-status">
+              <option value="">Todos os status</option>
+              <option value="ativo" ${filters.status === 'ativo' ? 'selected' : ''}>Ativo</option>
+              <option value="inativo" ${filters.status === 'inativo' ? 'selected' : ''}>Inativo</option>
+            </select>
 
-              <select id="client-filter-status">
-                <option value="">Todos os status</option>
-                <option value="ativo" ${filters.status === 'ativo' ? 'selected' : ''}>Ativo</option>
-                <option value="inativo" ${filters.status === 'inativo' ? 'selected' : ''}>Inativo</option>
-              </select>
+            <button class="btn btn-secondary" type="button" id="client-filter-apply">Filtrar</button>
+            <button class="btn btn-secondary" type="button" id="client-filter-clear">Limpar</button>
+          </div>
 
-              <button class="btn btn-secondary" type="button" id="client-filter-apply">Filtrar</button>
-              <button class="btn btn-secondary" type="button" id="client-filter-clear">Limpar</button>
-            </div>
-
-            <div class="table-wrap">
-              <table>
-                <thead>
+          <div class="table-wrap scroll-dual">
+            <table>
+              <thead>
+                <tr>
+                  <th>Nome</th>
+                  <th>Telefone</th>
+                  <th>E-mail</th>
+                  <th>Documento</th>
+                  <th>Status</th>
+                  <th>Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rows.map((row) => `
                   <tr>
-                    <th>Nome</th>
-                    <th>Telefone</th>
-                    <th>E-mail</th>
-                    <th>Documento</th>
-                    <th>Status</th>
-                    <th>Ações</th>
+                    <td>${escapeHtml(row.name || '-')}</td>
+                    <td>${escapeHtml(row.phone || '-')}</td>
+                    <td>${escapeHtml(row.email || '-')}</td>
+                    <td>${escapeHtml(row.document || '-')}</td>
+                    <td>${row.active === false ? '<span class="tag warning">Inativo</span>' : '<span class="tag success">Ativo</span>'}</td>
+                    <td>${renderClientActions(row)}</td>
                   </tr>
-                </thead>
-                <tbody>
-                  ${rows.map((row) => `
-                    <tr>
-                      <td>${escapeHtml(row.name || '-')}</td>
-                      <td>${escapeHtml(row.phone || '-')}</td>
-                      <td>${escapeHtml(row.email || '-')}</td>
-                      <td>${escapeHtml(row.document || '-')}</td>
-                      <td>${row.active === false ? '<span class="tag warning">Inativo</span>' : '<span class="tag success">Ativo</span>'}</td>
-                      <td>${renderClientActions(row)}</td>
-                    </tr>
-                  `).join('') || '<tr><td colspan="6">Nenhum cliente encontrado.</td></tr>'}
-                </tbody>
-              </table>
-            </div>
+                `).join('') || '<tr><td colspan="6">Nenhum cliente encontrado.</td></tr>'}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>

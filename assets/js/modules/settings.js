@@ -45,6 +45,33 @@ export function createSettingsModule(ctx) {
 
     const existing = (await listCollection('settings')).find((item) => item.scope === 'system');
 
+    const previous = existing || {};
+
+    const changes = [];
+    const fieldsToTrack = [
+      { field: 'storeName', label: 'Nome da loja' },
+      { field: 'address', label: 'Endereço da loja' },
+      { field: 'phone', label: 'Telefone da loja' },
+      { field: 'thermalWidth', label: 'Largura térmica' },
+      { field: 'thermalCompactMode', label: 'Modo compacto' },
+      { field: 'thermalAutoPrint', label: 'Impressão automática' },
+      { field: 'warrantyText', label: 'Texto de garantia' },
+      { field: 'lowStockThreshold', label: 'Limite de estoque baixo' }
+    ];
+
+    fieldsToTrack.forEach(({ field, label }) => {
+      const oldValue = previous[field];
+      const newValue = payload[field];
+      if (String(oldValue ?? '') !== String(newValue ?? '')) {
+        changes.push({
+          field,
+          label,
+          from: oldValue ?? '',
+          to: newValue ?? ''
+        });
+      }
+    });
+
     if (existing) {
       await updateByPath('settings', existing.id, {
         ...payload,
@@ -57,7 +84,8 @@ export function createSettingsModule(ctx) {
         entityType: 'settings',
         entityId: existing.id,
         entityLabel: 'Configurações gerais',
-        description: 'Configurações gerais atualizadas.'
+        description: 'Configurações gerais atualizadas.',
+        metadata: { changes }
       });
     } else {
       const createdId = await createDoc(refs.settings, {
@@ -71,7 +99,8 @@ export function createSettingsModule(ctx) {
         entityType: 'settings',
         entityId: createdId,
         entityLabel: 'Configurações gerais',
-        description: 'Configurações gerais criadas.'
+        description: 'Configurações gerais criadas.',
+        metadata: { changes }
       });
     }
 
@@ -93,7 +122,17 @@ export function createSettingsModule(ctx) {
       entityType: 'user',
       entityId: state.currentUser?.uid || '',
       entityLabel: state.currentUser?.fullName || '',
-      description: 'Senha do usuário alterada.'
+      description: 'Senha do usuário alterada.',
+      metadata: {
+        changes: [
+          {
+            field: 'password',
+            label: 'Senha',
+            from: '********',
+            to: '********'
+          }
+        ]
+      }
     });
 
     form.reset();
@@ -194,6 +233,12 @@ export function createSettingsModule(ctx) {
     }, { busyLabel: 'Abrindo...' });
   }
 
+  function bindAuditPrint() {
+    bindAsyncButton(tabEls.settings.querySelector('#audit-print-btn'), async () => {
+      auditModule.printFilteredLogs(auditFilters, shouldShowAuditLogs);
+    }, { busyLabel: 'Abrindo...' });
+  }
+
   function bindEvents() {
     bindSubmitGuard(tabEls.settings.querySelector('#settings-form'), saveSettings, {
       busyLabel: 'Salvando...'
@@ -207,6 +252,7 @@ export function createSettingsModule(ctx) {
     bindBackupEvents();
     bindExcelEvents();
     bindPrintEvents();
+    bindAuditPrint();
     cashierModule.bindCashEvents(render);
   }
 
@@ -432,7 +478,9 @@ export function createSettingsModule(ctx) {
         <div class="table-card">
           <div class="section-header">
             <h2>Auditoria</h2>
-            <span class="muted">Aplique filtros para exibir os logs</span>
+            <div class="form-actions">
+              <button class="btn btn-secondary" type="button" id="audit-print-btn">Imprimir filtro</button>
+            </div>
           </div>
 
           <div class="search-row" style="margin-bottom:14px;">
@@ -448,7 +496,7 @@ export function createSettingsModule(ctx) {
           </div>
 
           <div class="settings-audit-scroll settings-audit-host">
-            ${auditModule.renderAuditTable(auditFilters, shouldShowAuditLogs, 40)}
+            ${auditModule.renderAuditTable(auditFilters, shouldShowAuditLogs, 80)}
           </div>
         </div>
       </div>

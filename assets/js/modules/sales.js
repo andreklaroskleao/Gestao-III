@@ -24,6 +24,7 @@ export function createSalesModule(ctx) {
 
   let keyboardBound = false;
   let isFinishingSale = false;
+  let searchTerm = '';
 
   function focusSearchInput() {
     const input = tabEls.sales?.querySelector('#sale-product-search');
@@ -35,7 +36,8 @@ export function createSalesModule(ctx) {
 
   function getActiveProducts() {
     return (state.products || []).filter((item) =>
-      item.deleted !== true && item.status !== 'inativo'
+      item.deleted !== true
+      && item.status !== 'inativo'
     );
   }
 
@@ -46,7 +48,6 @@ export function createSalesModule(ctx) {
   function getProductByBarcode(barcode) {
     const value = String(barcode || '').trim();
     if (!value) return null;
-
     return getActiveProducts().find((item) => String(item.barcode || '').trim() === value) || null;
   }
 
@@ -144,7 +145,6 @@ export function createSalesModule(ctx) {
   function changeCartQuantity(productId, delta) {
     const row = getCartRow(productId);
     const stockQty = getAvailableStock(productId);
-
     if (!row) return;
 
     const nextQty = Number(row.quantity || 0) + Number(delta || 0);
@@ -167,9 +167,7 @@ export function createSalesModule(ctx) {
   function tryAddProductByBarcode(barcode, showWarning = true) {
     const product = getProductByBarcode(barcode);
     if (!product) {
-      if (showWarning) {
-        showToast('Produto não cadastrado.', 'error');
-      }
+      if (showWarning) showToast('Produto não cadastrado.', 'error');
       return false;
     }
 
@@ -178,18 +176,18 @@ export function createSalesModule(ctx) {
     const input = tabEls.sales.querySelector('#sale-product-search');
     if (input) {
       input.value = '';
+      searchTerm = '';
       input.focus();
     }
 
     return true;
   }
 
-  function handleSaleSearch() {
-    const input = tabEls.sales.querySelector('#sale-product-search');
+  function renderSearchResults() {
     const resultsEl = tabEls.sales.querySelector('#sale-search-results');
-    const term = String(input?.value || '').trim().toLowerCase();
-
     if (!resultsEl) return;
+
+    const term = String(searchTerm || '').trim().toLowerCase();
 
     if (!term) {
       resultsEl.innerHTML = `
@@ -382,6 +380,8 @@ export function createSalesModule(ctx) {
       });
 
       state.cart = [];
+      searchTerm = '';
+
       const searchInput = tabEls.sales.querySelector('#sale-product-search');
       if (searchInput) searchInput.value = '';
 
@@ -460,15 +460,20 @@ export function createSalesModule(ctx) {
               <span class="muted">Pesquisa de produto e código de barras</span>
             </div>
 
-            <div class="sales-search-row search-row sales-search" style="margin-bottom:14px;">
-              <input
-                id="sale-product-search"
-                type="text"
-                placeholder="Digite nome do produto ou código de barras"
-                autocomplete="off"
-              />
-              <button class="btn btn-secondary" type="button" id="sale-select-client-btn">Selecionar cliente</button>
-              <button class="btn btn-secondary" type="button" id="sale-clear-client-btn">Limpar cliente</button>
+            <div class="sales-search-toolbar" style="margin-bottom:14px;">
+              <div class="sales-search-main">
+                <input
+                  id="sale-product-search"
+                  type="text"
+                  placeholder="Digite nome do produto ou código de barras"
+                  autocomplete="off"
+                  value="${escapeHtml(searchTerm)}"
+                />
+              </div>
+              <div class="sales-search-actions">
+                <button class="btn btn-secondary" type="button" id="sale-select-client-btn">Selecionar cliente</button>
+                <button class="btn btn-secondary" type="button" id="sale-clear-client-btn">Limpar cliente</button>
+              </div>
             </div>
 
             <div class="form-grid" style="margin-bottom:14px;">
@@ -498,9 +503,7 @@ export function createSalesModule(ctx) {
               <label>
                 Forma de pagamento
                 <select id="sale-payment-method">
-                  ${paymentMethods.map((method) => `
-                    <option value="${escapeHtml(method)}">${escapeHtml(method)}</option>
-                  `).join('')}
+                  ${paymentMethods.map((method) => `<option value="${escapeHtml(method)}">${escapeHtml(method)}</option>`).join('')}
                 </select>
               </label>
 
@@ -543,9 +546,7 @@ export function createSalesModule(ctx) {
             <input id="sales-filter-customer" placeholder="Cliente" value="${escapeHtml(saleFilters.customer)}" />
             <select id="sales-filter-payment">
               <option value="">Todas as formas</option>
-              ${paymentMethods.map((method) => `
-                <option value="${escapeHtml(method)}" ${saleFilters.paymentMethod === method ? 'selected' : ''}>${escapeHtml(method)}</option>
-              `).join('')}
+              ${paymentMethods.map((method) => `<option value="${escapeHtml(method)}" ${saleFilters.paymentMethod === method ? 'selected' : ''}>${escapeHtml(method)}</option>`).join('')}
             </select>
             <input id="sales-filter-date-from" type="date" value="${saleFilters.dateFrom}" />
             <input id="sales-filter-date-to" type="date" value="${saleFilters.dateTo}" />
@@ -572,12 +573,16 @@ export function createSalesModule(ctx) {
       </div>
     `;
 
-    tabEls.sales.querySelector('#sale-product-search')?.addEventListener('input', handleSaleSearch);
-    tabEls.sales.querySelector('#sale-product-search')?.addEventListener('keydown', (event) => {
+    const searchInput = tabEls.sales.querySelector('#sale-product-search');
+    searchInput?.addEventListener('input', (event) => {
+      searchTerm = event.currentTarget.value || '';
+      renderSearchResults();
+    });
+
+    searchInput?.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') {
         event.preventDefault();
-        const value = event.currentTarget.value || '';
-        tryAddProductByBarcode(value, true);
+        tryAddProductByBarcode(event.currentTarget.value || '', true);
       }
     });
 
@@ -615,6 +620,7 @@ export function createSalesModule(ctx) {
       render();
     }, { busyLabel: 'Limpando...' });
 
+    renderSearchResults();
     renderCart();
     renderHistory();
     updateSaleSummary();

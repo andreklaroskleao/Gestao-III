@@ -2248,3 +2248,40 @@ body.theme-light #tab-sales option {
     width: 100%;
   }
 }
+
+#tab-settings .settings-audit-scroll {
+  max-height: min(58vh, 460px);
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  width: 100%;
+}
+
+#tab-settings .settings-audit-scroll > * {
+  min-width: 100%;
+}
+
+#tab-settings .settings-audit-scroll table {
+  min-width: 980px;
+  width: max-content;
+}
+
+#tab-settings .settings-audit-scroll .table-wrap,
+#tab-settings .settings-audit-scroll .audit-table-scroll,
+#tab-settings .settings-audit-scroll .scroll-dual {
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+#tab-settings .settings-audit-host {
+  position: relative;
+}
+
+@media (max-width: 768px) {
+  #tab-settings .settings-audit-scroll {
+    max-height: min(50vh, 340px);
+  }
+
+  #tab-settings .settings-audit-scroll table {
+    min-width: 860px;
+  }
+}

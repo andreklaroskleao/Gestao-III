@@ -66,23 +66,18 @@ export function createReportsModule(ctx) {
     const salesCount = sales.length;
     const ticket = salesCount ? salesTotal / salesCount : 0;
 
-    const deliveriesOpen = deliveries.filter((item) => !['Concluído', 'Cancelado'].includes(item.status)).length;
-    const purchaseTotal = purchases.reduce((sum, item) => sum + Number(item.totalAmount || 0), 0);
-    const payablesOpen = payables.reduce((sum, item) => sum + Number(item.openAmount || 0), 0);
-    const stockValue = products.reduce((sum, item) => sum + (Number(item.quantity || 0) * Number(item.costPrice || 0)), 0);
-
     return {
       salesTotal,
       salesCount,
       ticket,
-      deliveriesOpen,
-      purchaseTotal,
-      payablesOpen,
-      stockValue
+      deliveriesOpen: deliveries.filter((item) => !['Concluído', 'Cancelado'].includes(item.status)).length,
+      purchaseTotal: purchases.reduce((sum, item) => sum + Number(item.totalAmount || 0), 0),
+      payablesOpen: payables.reduce((sum, item) => sum + Number(item.openAmount || 0), 0),
+      stockValue: products.reduce((sum, item) => sum + (Number(item.quantity || 0) * Number(item.costPrice || 0)), 0)
     };
   }
 
-  function getTopProducts(limit = 5) {
+  function getTopProducts(limit = 8) {
     const map = new Map();
 
     getFilteredSales().forEach((sale) => {
@@ -98,7 +93,7 @@ export function createReportsModule(ctx) {
       .slice(0, limit);
   }
 
-  function getTopCustomers(limit = 5) {
+  function getTopCustomers(limit = 8) {
     const map = new Map();
 
     getFilteredSales().forEach((sale) => {
@@ -122,11 +117,7 @@ export function createReportsModule(ctx) {
     });
 
     bindAsyncButton(tabEls.reports.querySelector('#reports-filter-clear'), async () => {
-      filters = {
-        dateFrom: '',
-        dateTo: '',
-        paymentMethod: ''
-      };
+      filters = { dateFrom: '', dateTo: '', paymentMethod: '' };
       render();
     }, { busyLabel: 'Limpando...' });
 
@@ -141,7 +132,7 @@ export function createReportsModule(ctx) {
     }
 
     return `
-      <div class="stack-list slim-list">
+      <div class="stack-list slim-list list-scroll">
         ${items.map((item) => formatter(item)).join('')}
       </div>
     `;
@@ -150,7 +141,6 @@ export function createReportsModule(ctx) {
   function formatDateValueForTable(dateLike) {
     const date = dateLike?.toDate ? dateLike.toDate() : new Date(dateLike || 0);
     if (Number.isNaN(date.getTime())) return '-';
-
     return date.toLocaleString('pt-BR');
   }
 
@@ -199,7 +189,7 @@ export function createReportsModule(ctx) {
           </div>
         </div>
 
-        <div class="grid-2">
+        <div class="dashboard-card-grid">
           <div class="table-card">
             <div class="section-header">
               <h2>Produtos mais vendidos</h2>
@@ -231,7 +221,7 @@ export function createReportsModule(ctx) {
             <span class="muted">${filteredSales.length} resultado(s)</span>
           </div>
 
-          <div class="table-wrap">
+          <div class="table-wrap scroll-dual">
             <table>
               <thead>
                 <tr>
@@ -262,7 +252,5 @@ export function createReportsModule(ctx) {
     bindEvents();
   }
 
-  return {
-    render
-  };
+  return { render };
 }

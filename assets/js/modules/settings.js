@@ -218,9 +218,7 @@ export function createSettingsModule(ctx) {
     const totalReceived = accounts.reduce((sum, item) => sum + Number(item.receivedAmount || 0), 0);
 
     const overdueCount = accounts.filter((item) => {
-      if (!item.dueDate || Number(item.openAmount || 0) <= 0) {
-        return false;
-      }
+      if (!item.dueDate || Number(item.openAmount || 0) <= 0) return false;
 
       const due = new Date(`${item.dueDate}T00:00:00`);
       const today = new Date();
@@ -280,6 +278,11 @@ export function createSettingsModule(ctx) {
             <label>
               Endereço
               <input name="address" value="${escapeHtml(state.settings?.address || '')}" />
+            </label>
+
+            <label>
+              Telefone da loja
+              <input name="phone" value="${escapeHtml(state.settings?.phone || state.settings?.storePhone || '')}" />
             </label>
 
             <label>

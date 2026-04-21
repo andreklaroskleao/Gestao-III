@@ -1721,3 +1721,67 @@ body.sidebar-collapsed .sidebar .nav-item:hover::after {
     max-width: min(96vw, 96vw);
   }
 }
+
+/* =========================
+   VENDAS - CAMPO DE BUSCA MAIOR NO DESKTOP
+   ========================= */
+
+#tab-sales #sale-product-search {
+  min-height: 48px;
+  font-size: 1rem;
+}
+
+@media (min-width: 1024px) {
+  #tab-sales #sale-product-search {
+    min-width: 420px;
+    width: min(100%, 620px);
+    font-size: 1.05rem;
+    padding: 13px 14px;
+  }
+
+  #tab-sales .sales-search-row,
+  #tab-sales .sale-search-row,
+  #tab-sales .search-row.sales-search {
+    grid-template-columns: minmax(420px, 620px) auto auto;
+    align-items: end;
+  }
+
+  #tab-sales .sales-layout .panel:first-child .search-row:first-of-type,
+  #tab-sales .sales-layout .panel:first-child .form-actions:first-of-type {
+    align-items: end;
+  }
+}
+
+/* =========================
+   SETTINGS / AUDITORIA COM ROLAGEM INTERNA
+   ========================= */
+
+#tab-settings .settings-audit-scroll {
+  max-height: min(58vh, 460px);
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+#tab-settings .settings-financial-scroll {
+  max-height: min(52vh, 360px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+}
+
+#tab-settings .settings-cash-history-scroll {
+  max-height: min(58vh, 420px);
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 768px) {
+  #tab-settings .settings-audit-scroll,
+  #tab-settings .settings-cash-history-scroll {
+    max-height: min(50vh, 340px);
+  }
+
+  #tab-settings .settings-financial-scroll {
+    max-height: min(42vh, 280px);
+  }
+}

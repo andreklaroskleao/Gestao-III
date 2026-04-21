@@ -2285,3 +2285,17 @@ body.theme-light #tab-sales option {
     min-width: 860px;
   }
 }
+.audit-changes-list {
+  display: grid;
+  gap: 4px;
+}
+
+.audit-change-row {
+  line-height: 1.35;
+}
+
+.audit-change-arrow {
+  display: inline-block;
+  margin: 0 4px;
+  font-weight: 700;
+}

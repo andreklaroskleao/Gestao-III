@@ -11,7 +11,8 @@ export function createUsersModule(ctx) {
     updateManagedUser,
     deleteManagedUser,
     listUsers,
-    auditModule
+    auditModule,
+    hasPermission
   } = ctx;
 
   let filters = {
@@ -56,23 +57,17 @@ export function createUsersModule(ctx) {
   }
 
   function getSafeAccessOptions() {
-    if (Array.isArray(ACCESS_LEVELS) && ACCESS_LEVELS.length) {
-      return ACCESS_LEVELS;
-    }
+    if (Array.isArray(ACCESS_LEVELS) && ACCESS_LEVELS.length) return ACCESS_LEVELS;
     return ['admin', 'manager', 'operator'];
   }
 
   function getSafeRoleOptions() {
-    if (Array.isArray(ROLES) && ROLES.length) {
-      return ROLES;
-    }
+    if (Array.isArray(ROLES) && ROLES.length) return ROLES;
     return ['Administrador', 'Gerente', 'Operador'];
   }
 
   function getSafeAreaOptions() {
-    if (Array.isArray(AREAS) && AREAS.length) {
-      return AREAS;
-    }
+    if (Array.isArray(AREAS) && AREAS.length) return AREAS;
     return ['Geral', 'Vendas', 'Estoque', 'Financeiro'];
   }
 
@@ -139,6 +134,7 @@ export function createUsersModule(ctx) {
 
       const values = Object.fromEntries(new FormData(form).entries());
       const accessLevel = String(values.accessLevel || 'operator');
+
       const payload = {
         fullName: values.fullName || '',
         email: values.email || '',
@@ -173,10 +169,7 @@ export function createUsersModule(ctx) {
           return;
         }
 
-        const created = await createManagedUser({
-          ...payload,
-          password
-        });
+        const created = await createManagedUser({ ...payload, password });
 
         await auditModule.log({
           module: 'users',
@@ -200,9 +193,7 @@ export function createUsersModule(ctx) {
   async function refreshUsers() {
     try {
       const rows = await listUsers();
-      if (Array.isArray(rows)) {
-        state.users = rows;
-      }
+      if (Array.isArray(rows)) state.users = rows;
     } catch (error) {
       console.error(error);
     }
@@ -247,25 +238,19 @@ export function createUsersModule(ctx) {
 
               <label>Nível de acesso
                 <select name="accessLevel">
-                  ${accessOptions.map((item) => `
-                    <option value="${escapeHtml(item)}">${escapeHtml(item)}</option>
-                  `).join('')}
+                  ${accessOptions.map((item) => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join('')}
                 </select>
               </label>
 
               <label>Função
                 <select name="role">
-                  ${roleOptions.map((item) => `
-                    <option value="${escapeHtml(item)}">${escapeHtml(item)}</option>
-                  `).join('')}
+                  ${roleOptions.map((item) => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join('')}
                 </select>
               </label>
 
               <label>Área
                 <select name="area">
-                  ${areaOptions.map((item) => `
-                    <option value="${escapeHtml(item)}">${escapeHtml(item)}</option>
-                  `).join('')}
+                  ${areaOptions.map((item) => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join('')}
                 </select>
               </label>
             </div>
@@ -310,8 +295,14 @@ export function createUsersModule(ctx) {
     bindSubmitGuard(form, saveUser, { busyLabel: 'Salvando...' });
   }
 
+  function closeUserFormModal() {
+    const modalRoot = document.getElementById('modal-root');
+    if (modalRoot) modalRoot.innerHTML = '';
+    state.editingUserId = null;
+  }
+
   async function handleDeleteUser(userId) {
-    const row = getEditingUser() || getRows().find((item) => item.id === userId || item.uid === userId);
+    const row = getRows().find((item) => item.id === userId || item.uid === userId);
     if (!row) return;
 
     window.openConfirmDeleteModal?.({
@@ -372,23 +363,16 @@ export function createUsersModule(ctx) {
     });
 
     bindAsyncButton(tabEls.users.querySelector('#user-filter-clear'), async () => {
-      filters = {
-        term: '',
-        accessLevel: ''
-      };
+      filters = { term: '', accessLevel: '' };
       render();
     }, { busyLabel: 'Limpando...' });
 
     tabEls.users.querySelectorAll('[data-user-edit]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        openUserFormModal(btn.dataset.userEdit);
-      });
+      btn.addEventListener('click', () => openUserFormModal(btn.dataset.userEdit));
     });
 
     tabEls.users.querySelectorAll('[data-user-more]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        openUserActions(btn.dataset.userMore);
-      });
+      btn.addEventListener('click', () => openUserActions(btn.dataset.userMore));
     });
   }
 
@@ -431,9 +415,7 @@ export function createUsersModule(ctx) {
             <input id="user-filter-term" placeholder="Buscar por nome, e-mail, função, área ou acesso" value="${escapeHtml(filters.term)}" />
             <select id="user-filter-access">
               <option value="">Todos os níveis</option>
-              ${accessOptions.map((item) => `
-                <option value="${escapeHtml(item)}" ${filters.accessLevel === item ? 'selected' : ''}>${escapeHtml(item)}</option>
-              `).join('')}
+              ${accessOptions.map((item) => `<option value="${escapeHtml(item)}" ${filters.accessLevel === item ? 'selected' : ''}>${escapeHtml(item)}</option>`).join('')}
             </select>
             <button class="btn btn-secondary" type="button" id="user-filter-apply">Filtrar</button>
             <button class="btn btn-secondary" type="button" id="user-filter-clear">Limpar</button>

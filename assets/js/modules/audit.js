@@ -7,6 +7,57 @@ export function createAuditModule(ctx) {
     createDoc
   } = ctx;
 
+  function escapeHtml(value = '') {
+    return String(value).replace(/[&<>'"]/g, (char) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      "'": '&#39;',
+      '"': '&quot;'
+    }[char]));
+  }
+
+  function resolveActorName() {
+    return String(
+      state.currentUser?.fullName
+      || state.currentUser?.username
+      || state.currentUser?.email
+      || 'Usuário'
+    ).trim();
+  }
+
+  function resolveActorId() {
+    return String(
+      state.currentUser?.uid
+      || state.currentUser?.id
+      || ''
+    ).trim();
+  }
+
+  function getLogUserName(item) {
+    return String(
+      item?.performedByName
+      || item?.userName
+      || item?.metadata?.performedByName
+      || item?.metadata?.userName
+      || item?.performedByEmail
+      || item?.userEmail
+      || item?.performedById
+      || item?.userId
+      || '-'
+    ).trim();
+  }
+
+  function getLogUserId(item) {
+    return String(
+      item?.performedById
+      || item?.userId
+      || item?.metadata?.performedById
+      || item?.metadata?.userId
+      || ''
+    ).trim();
+  }
+
   async function log({
     module = '',
     action = '',
@@ -17,17 +68,26 @@ export function createAuditModule(ctx) {
     metadata = {}
   } = {}) {
     try {
+      const actorName = resolveActorName();
+      const actorId = resolveActorId();
+      const actorEmail = String(state.currentUser?.email || '').trim();
+
       await createDoc(refs.auditLogs, {
-        module,
-        action,
-        entityType,
-        entityId,
+        module: module || '',
+        action: action || '',
+        entityType: entityType || '',
+        entityId: entityId || '',
         entityLabel,
         description,
         metadata,
-        userId: state.currentUser?.uid || '',
-        userName: state.currentUser?.fullName || state.currentUser?.email || 'Usuário',
-        deleted: false
+        performedById: actorId,
+        performedByName: actorName,
+        performedByEmail: actorEmail,
+        userId: actorId,
+        userName: actorName,
+        userEmail: actorEmail,
+        deleted: false,
+        createdAt: new Date()
       });
     } catch (error) {
       console.error('Erro ao gravar auditoria:', error);
@@ -75,14 +135,19 @@ export function createAuditModule(ctx) {
       if (item.deleted === true) return false;
 
       const createdKey = normalizeDateKey(item.createdAt);
+      const userValue = getLogUserName(item).toLowerCase();
 
       return matchFilter(item.module, filters.module)
         && matchFilter(item.action, filters.action)
         && matchFilter(item.entityType, filters.entityType)
         && matchFilter(item.entityLabel, filters.entityLabel)
-        && matchFilter(item.userName || item.userId, filters.user)
+        && (!filters.user || userValue.includes(filters.user.toLowerCase()))
         && (!filters.dateFrom || !createdKey || createdKey >= filters.dateFrom)
         && (!filters.dateTo || !createdKey || createdKey <= filters.dateTo);
+    }).sort((a, b) => {
+      const da = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : new Date(a.createdAt || 0).getTime();
+      const db = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : new Date(b.createdAt || 0).getTime();
+      return db - da;
     });
   }
 
@@ -173,7 +238,7 @@ export function createAuditModule(ctx) {
           ${rows.map((item) => `
             <tr>
               <td>${escapeHtml(formatDateTime(item.createdAt))}</td>
-              <td>${escapeHtml(item.userName || item.userId || '-')}</td>
+              <td title="${escapeHtml(getLogUserId(item))}">${escapeHtml(getLogUserName(item))}</td>
               <td>${escapeHtml(item.module || '-')}</td>
               <td>${renderActionTag(item.action || '-')}</td>
               <td>${escapeHtml(item.entityType || '-')}</td>
@@ -206,61 +271,20 @@ export function createAuditModule(ctx) {
           <meta charset="utf-8" />
           <title>Auditoria filtrada</title>
           <style>
-            body {
-              font-family: Arial, Helvetica, sans-serif;
-              margin: 20px;
-              color: #111;
-            }
-
-            h1 {
-              margin: 0 0 8px;
-              font-size: 20px;
-            }
-
-            .subtitle {
-              margin-bottom: 16px;
-              color: #555;
-            }
-
-            table {
-              width: 100%;
-              border-collapse: collapse;
-              table-layout: fixed;
-              font-size: 12px;
-            }
-
-            th, td {
-              border: 1px solid #999;
-              padding: 6px;
-              text-align: left;
-              vertical-align: top;
-              word-break: break-word;
-            }
-
-            th {
-              background: #f0f0f0;
-            }
-
-            .audit-change-row {
-              margin-bottom: 4px;
-            }
-
-            .audit-change-arrow {
-              margin: 0 4px;
-              font-weight: 700;
-            }
-
-            @media print {
-              body {
-                margin: 10px;
-              }
-            }
+            body { font-family: Arial, Helvetica, sans-serif; margin: 20px; color: #111; }
+            h1 { margin: 0 0 8px; font-size: 20px; }
+            .subtitle { margin-bottom: 16px; color: #555; }
+            table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 12px; }
+            th, td { border: 1px solid #999; padding: 6px; text-align: left; vertical-align: top; word-break: break-word; }
+            th { background: #f0f0f0; }
+            .audit-change-row { margin-bottom: 4px; }
+            .audit-change-arrow { margin: 0 4px; font-weight: 700; }
+            @media print { body { margin: 10px; } }
           </style>
         </head>
         <body>
           <h1>Auditoria filtrada</h1>
           <div class="subtitle">Total de registros: ${rows.length}</div>
-
           <table>
             <thead>
               <tr>
@@ -277,7 +301,7 @@ export function createAuditModule(ctx) {
               ${rows.map((item) => `
                 <tr>
                   <td>${escapeHtml(formatDateTime(item.createdAt))}</td>
-                  <td>${escapeHtml(item.userName || item.userId || '-')}</td>
+                  <td>${escapeHtml(getLogUserName(item))}</td>
                   <td>${escapeHtml(item.module || '-')}</td>
                   <td>${escapeHtml(item.action || '-')}</td>
                   <td>${escapeHtml(item.entityType || '-')}</td>
@@ -324,16 +348,6 @@ export function createAuditModule(ctx) {
         ${escapeHtml(formatChangeValue(change.to))}
       </div>
     `).join('');
-  }
-
-  function escapeHtml(value = '') {
-    return String(value).replace(/[&<>'"]/g, (char) => ({
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      "'": '&#39;',
-      '"': '&quot;'
-    }[char]));
   }
 
   return {

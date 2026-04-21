@@ -31,7 +31,6 @@ export function createUsersModule(ctx) {
       const haystack = [
         item.fullName,
         item.email,
-        item.username,
         item.role,
         item.area,
         item.accessLevel
@@ -76,12 +75,10 @@ export function createUsersModule(ctx) {
     if (!form || !row) return;
 
     form.elements.fullName.value = row.fullName || '';
-    form.elements.username.value = row.username || '';
     form.elements.email.value = row.email || '';
     form.elements.role.value = row.role || getSafeRoleOptions()[0] || 'Operador';
     form.elements.area.value = row.area || getSafeAreaOptions()[0] || 'Geral';
     form.elements.accessLevel.value = row.accessLevel || getSafeAccessOptions()[0] || 'operator';
-    form.elements.active.value = String(row.active !== false);
   }
 
   function buildPermissionsByAccessLevel(accessLevel) {
@@ -151,24 +148,21 @@ export function createUsersModule(ctx) {
       const accessLevel = String(values.accessLevel || 'operator');
 
       const payload = {
-        fullName: String(values.fullName || '').trim(),
-        username: String(values.username || values.email || '').trim(),
-        email: String(values.email || '').trim(),
-        role: String(values.role || ''),
-        area: String(values.area || ''),
+        fullName: values.fullName || '',
+        email: values.email || '',
+        role: values.role || '',
+        area: values.area || '',
         accessLevel,
-        permissions: buildPermissionsByAccessLevel(accessLevel),
-        active: String(values.active || 'true') === 'true',
-        deleted: false
+        permissions: buildPermissionsByAccessLevel(accessLevel)
       };
 
-      if (!payload.fullName || !payload.email || !payload.username) {
-        alert('Informe nome, usuário e e-mail.');
+      if (!payload.fullName || !payload.email) {
+        alert('Informe nome e e-mail.');
         return;
       }
 
       if (state.editingUserId) {
-        await updateManagedUser(state.currentUser, state.editingUserId, payload);
+        await updateManagedUser(state.editingUserId, payload);
 
         await auditModule.log({
           module: 'users',
@@ -181,13 +175,13 @@ export function createUsersModule(ctx) {
 
         showToast('Usuário atualizado.', 'success');
       } else {
-        const password = String(values.password || '').trim();
+        const password = values.password || '';
         if (!password) {
           alert('Informe a senha do novo usuário.');
           return;
         }
 
-        const created = await createManagedUser(state.currentUser, {
+        const created = await createManagedUser({
           ...payload,
           password
         });
@@ -237,10 +231,6 @@ export function createUsersModule(ctx) {
                 <input name="fullName" required />
               </label>
 
-              <label>Usuário
-                <input name="username" required />
-              </label>
-
               <label>E-mail
                 <input name="email" type="email" ${editing ? 'readonly' : 'required'} />
               </label>
@@ -253,26 +243,25 @@ export function createUsersModule(ctx) {
 
               <label>Nível de acesso
                 <select name="accessLevel">
-                  ${accessOptions.map((item) => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join('')}
+                  ${accessOptions.map((item) => `
+                    <option value="${escapeHtml(item)}">${escapeHtml(item)}</option>
+                  `).join('')}
                 </select>
               </label>
 
               <label>Função
                 <select name="role">
-                  ${roleOptions.map((item) => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join('')}
+                  ${roleOptions.map((item) => `
+                    <option value="${escapeHtml(item)}">${escapeHtml(item)}</option>
+                  `).join('')}
                 </select>
               </label>
 
               <label>Área
                 <select name="area">
-                  ${areaOptions.map((item) => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join('')}
-                </select>
-              </label>
-
-              <label>Status
-                <select name="active">
-                  <option value="true">Ativo</option>
-                  <option value="false">Inativo</option>
+                  ${areaOptions.map((item) => `
+                    <option value="${escapeHtml(item)}">${escapeHtml(item)}</option>
+                  `).join('')}
                 </select>
               </label>
             </div>
@@ -331,7 +320,7 @@ export function createUsersModule(ctx) {
       title: 'Excluir usuário',
       message: 'Deseja realmente excluir este usuário? Esta ação pode afetar o acesso ao sistema.',
       onConfirm: async () => {
-        await deleteManagedUser(state.currentUser, userId);
+        await deleteManagedUser(userId);
 
         await auditModule.log({
           module: 'users',
@@ -385,16 +374,23 @@ export function createUsersModule(ctx) {
     });
 
     bindAsyncButton(tabEls.users.querySelector('#user-filter-clear'), async () => {
-      filters = { term: '', accessLevel: '' };
+      filters = {
+        term: '',
+        accessLevel: ''
+      };
       render();
     }, { busyLabel: 'Limpando...' });
 
     tabEls.users.querySelectorAll('[data-user-edit]').forEach((btn) => {
-      btn.addEventListener('click', () => openUserFormModal(btn.dataset.userEdit));
+      btn.addEventListener('click', () => {
+        openUserFormModal(btn.dataset.userEdit);
+      });
     });
 
     tabEls.users.querySelectorAll('[data-user-more]').forEach((btn) => {
-      btn.addEventListener('click', () => openUserActions(btn.dataset.userMore));
+      btn.addEventListener('click', () => {
+        openUserActions(btn.dataset.userMore);
+      });
     });
   }
 
@@ -434,10 +430,12 @@ export function createUsersModule(ctx) {
           </div>
 
           <div class="search-row" style="margin-bottom:14px;">
-            <input id="user-filter-term" placeholder="Buscar por nome, e-mail, usuário, função, área ou acesso" value="${escapeHtml(filters.term)}" />
+            <input id="user-filter-term" placeholder="Buscar por nome, e-mail, função, área ou acesso" value="${escapeHtml(filters.term)}" />
             <select id="user-filter-access">
               <option value="">Todos os níveis</option>
-              ${accessOptions.map((item) => `<option value="${escapeHtml(item)}" ${filters.accessLevel === item ? 'selected' : ''}>${escapeHtml(item)}</option>`).join('')}
+              ${accessOptions.map((item) => `
+                <option value="${escapeHtml(item)}" ${filters.accessLevel === item ? 'selected' : ''}>${escapeHtml(item)}</option>
+              `).join('')}
             </select>
             <button class="btn btn-secondary" type="button" id="user-filter-apply">Filtrar</button>
             <button class="btn btn-secondary" type="button" id="user-filter-clear">Limpar</button>
@@ -448,7 +446,6 @@ export function createUsersModule(ctx) {
               <thead>
                 <tr>
                   <th>Nome</th>
-                  <th>Usuário</th>
                   <th>E-mail</th>
                   <th>Função</th>
                   <th>Área</th>
@@ -460,14 +457,13 @@ export function createUsersModule(ctx) {
                 ${rows.map((row) => `
                   <tr>
                     <td>${escapeHtml(row.fullName || '-')}</td>
-                    <td>${escapeHtml(row.username || '-')}</td>
                     <td>${escapeHtml(row.email || '-')}</td>
                     <td>${escapeHtml(row.role || '-')}</td>
                     <td>${escapeHtml(row.area || '-')}</td>
                     <td><span class="tag info">${escapeHtml(row.accessLevel || 'operator')}</span></td>
                     <td>${renderUserActions(row)}</td>
                   </tr>
-                `).join('') || '<tr><td colspan="7">Nenhum usuário encontrado.</td></tr>'}
+                `).join('') || '<tr><td colspan="6">Nenhum usuário encontrado.</td></tr>'}
               </tbody>
             </table>
           </div>

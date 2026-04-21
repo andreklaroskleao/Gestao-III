@@ -35,7 +35,7 @@ export function createPrintModule(ctx) {
       : date.toLocaleString('pt-BR');
   }
 
-  function truncateText(text, max = 28) {
+  function truncateText(text, max = 26) {
     const value = String(text || '').trim();
     if (value.length <= max) return value;
     return `${value.slice(0, max - 1)}…`;
@@ -50,6 +50,12 @@ export function createPrintModule(ctx) {
 
     return `
       <table class="receipt-items-table">
+        <colgroup>
+          <col style="width: 46%">
+          <col style="width: 10%">
+          <col style="width: 19%">
+          <col style="width: 25%">
+        </colgroup>
         <thead>
           <tr>
             <th class="col-product">Produto</th>
@@ -76,7 +82,7 @@ export function createPrintModule(ctx) {
 
   function buildReceiptHtml(sale) {
     const { thermalWidth, compactMode } = getPrintSettings();
-    const widthPx = thermalWidth === '58mm' ? 360 : 520;
+    const widthPx = thermalWidth === '58mm' ? 350 : 520;
     const storeName = state.settings?.storeName || 'Minha Loja';
     const address = state.settings?.address || '';
     const phone = state.settings?.phone || state.settings?.storePhone || '';
@@ -93,7 +99,7 @@ export function createPrintModule(ctx) {
           <style>
             :root {
               --text: #111;
-              --muted: #555;
+              --muted: #444;
               --line: #000;
             }
 
@@ -106,7 +112,7 @@ export function createPrintModule(ctx) {
               padding: 0;
               background: #fff;
               color: var(--text);
-              font-family: Arial, Helvetica, sans-serif;
+              font-family: "Courier New", Courier, monospace;
             }
 
             body {
@@ -129,9 +135,10 @@ export function createPrintModule(ctx) {
             }
 
             .store-name {
-              font-size: ${compactMode ? '16px' : '18px'};
+              font-size: ${compactMode ? '18px' : '20px'};
               font-weight: 700;
-              margin-bottom: 3px;
+              margin-bottom: 4px;
+              text-transform: uppercase;
             }
 
             .store-meta {
@@ -141,9 +148,9 @@ export function createPrintModule(ctx) {
             }
 
             .receipt-title {
-              font-size: ${compactMode ? '13px' : '14px'};
+              font-size: ${compactMode ? '14px' : '15px'};
               font-weight: 700;
-              margin-top: 6px;
+              margin-top: 8px;
               text-transform: uppercase;
             }
 
@@ -158,10 +165,10 @@ export function createPrintModule(ctx) {
             }
 
             .meta-line {
-              display: flex;
-              justify-content: space-between;
-              align-items: flex-start;
+              display: grid;
+              grid-template-columns: 110px 1fr;
               gap: 8px;
+              align-items: start;
             }
 
             .meta-line .label {
@@ -170,7 +177,6 @@ export function createPrintModule(ctx) {
 
             .meta-line .value {
               text-align: right;
-              flex: 1;
               word-break: break-word;
             }
 
@@ -190,7 +196,6 @@ export function createPrintModule(ctx) {
 
             .receipt-items-table th {
               font-size: ${compactMode ? '10px' : '11px'};
-              text-align: left;
               font-weight: 700;
             }
 
@@ -199,25 +204,18 @@ export function createPrintModule(ctx) {
             }
 
             .col-product {
-              width: 42%;
               text-align: left;
               word-break: break-word;
+              padding-right: 6px;
             }
 
             .col-qtd {
-              width: 12%;
               text-align: center;
               white-space: nowrap;
             }
 
-            .col-unit {
-              width: 21%;
-              text-align: right;
-              white-space: nowrap;
-            }
-
+            .col-unit,
             .col-total {
-              width: 25%;
               text-align: right;
               white-space: nowrap;
             }
@@ -231,10 +229,20 @@ export function createPrintModule(ctx) {
             }
 
             .totals .line {
-              display: flex;
-              justify-content: space-between;
+              display: grid;
+              grid-template-columns: 1fr auto;
               gap: 10px;
               margin: 3px 0;
+              align-items: center;
+            }
+
+            .totals .line span:first-child {
+              text-align: left;
+            }
+
+            .totals .line strong:last-child {
+              text-align: right;
+              min-width: 110px;
             }
 
             .totals .line.total {

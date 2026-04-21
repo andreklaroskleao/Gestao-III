@@ -124,6 +124,18 @@ export function createUsersModule(ctx) {
     ];
   }
 
+  async function refreshUsers() {
+    try {
+      const rows = await listUsers();
+      if (Array.isArray(rows)) {
+        state.users = rows;
+      }
+    } catch (error) {
+      console.error(error);
+    }
+    render();
+  }
+
   async function saveUser() {
     if (isSavingUser) return;
     isSavingUser = true;
@@ -169,7 +181,10 @@ export function createUsersModule(ctx) {
           return;
         }
 
-        const created = await createManagedUser({ ...payload, password });
+        const created = await createManagedUser({
+          ...payload,
+          password
+        });
 
         await auditModule.log({
           module: 'users',
@@ -190,16 +205,6 @@ export function createUsersModule(ctx) {
     }
   }
 
-  async function refreshUsers() {
-    try {
-      const rows = await listUsers();
-      if (Array.isArray(rows)) state.users = rows;
-    } catch (error) {
-      console.error(error);
-    }
-    render();
-  }
-
   function getUserFormHtml() {
     const editing = getEditingUser();
     const accessOptions = getSafeAccessOptions();
@@ -210,7 +215,7 @@ export function createUsersModule(ctx) {
       <div class="form-modal-body">
         <div class="section-header">
           <h2>${editing ? 'Editar usuário' : 'Novo usuário'}</h2>
-          <span class="muted">Cadastro em modal, sem alterar estrutura do banco.</span>
+          <span class="muted">Cadastro em modal.</span>
         </div>
 
         <form id="user-form" class="form-grid mobile-optimized">
@@ -238,19 +243,25 @@ export function createUsersModule(ctx) {
 
               <label>Nível de acesso
                 <select name="accessLevel">
-                  ${accessOptions.map((item) => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join('')}
+                  ${accessOptions.map((item) => `
+                    <option value="${escapeHtml(item)}">${escapeHtml(item)}</option>
+                  `).join('')}
                 </select>
               </label>
 
               <label>Função
                 <select name="role">
-                  ${roleOptions.map((item) => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join('')}
+                  ${roleOptions.map((item) => `
+                    <option value="${escapeHtml(item)}">${escapeHtml(item)}</option>
+                  `).join('')}
                 </select>
               </label>
 
               <label>Área
                 <select name="area">
-                  ${areaOptions.map((item) => `<option value="${escapeHtml(item)}">${escapeHtml(item)}</option>`).join('')}
+                  ${areaOptions.map((item) => `
+                    <option value="${escapeHtml(item)}">${escapeHtml(item)}</option>
+                  `).join('')}
                 </select>
               </label>
             </div>
@@ -363,16 +374,23 @@ export function createUsersModule(ctx) {
     });
 
     bindAsyncButton(tabEls.users.querySelector('#user-filter-clear'), async () => {
-      filters = { term: '', accessLevel: '' };
+      filters = {
+        term: '',
+        accessLevel: ''
+      };
       render();
     }, { busyLabel: 'Limpando...' });
 
     tabEls.users.querySelectorAll('[data-user-edit]').forEach((btn) => {
-      btn.addEventListener('click', () => openUserFormModal(btn.dataset.userEdit));
+      btn.addEventListener('click', () => {
+        openUserFormModal(btn.dataset.userEdit);
+      });
     });
 
     tabEls.users.querySelectorAll('[data-user-more]').forEach((btn) => {
-      btn.addEventListener('click', () => openUserActions(btn.dataset.userMore));
+      btn.addEventListener('click', () => {
+        openUserActions(btn.dataset.userMore);
+      });
     });
   }
 
@@ -415,7 +433,9 @@ export function createUsersModule(ctx) {
             <input id="user-filter-term" placeholder="Buscar por nome, e-mail, função, área ou acesso" value="${escapeHtml(filters.term)}" />
             <select id="user-filter-access">
               <option value="">Todos os níveis</option>
-              ${accessOptions.map((item) => `<option value="${escapeHtml(item)}" ${filters.accessLevel === item ? 'selected' : ''}>${escapeHtml(item)}</option>`).join('')}
+              ${accessOptions.map((item) => `
+                <option value="${escapeHtml(item)}" ${filters.accessLevel === item ? 'selected' : ''}>${escapeHtml(item)}</option>
+              `).join('')}
             </select>
             <button class="btn btn-secondary" type="button" id="user-filter-apply">Filtrar</button>
             <button class="btn btn-secondary" type="button" id="user-filter-clear">Limpar</button>

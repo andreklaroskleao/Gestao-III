@@ -95,6 +95,7 @@ export function createSalesModule(ctx) {
   function normalizeSaleForPrint(sale) {
     return {
       customerName: sale.customerName || '',
+      customerCpf: sale.customerCpf || '',
       paymentMethod: sale.paymentMethod || '',
       subtotal: Number(sale.subtotal || 0),
       discount: Number(sale.discount || 0),
@@ -300,7 +301,7 @@ export function createSalesModule(ctx) {
     historyEl.innerHTML = rows.map((sale) => `
       <tr>
         <td>${escapeHtml(formatDateTime(sale.createdAt))}</td>
-        <td>${escapeHtml(sale.customerName || 'Balcão')}</td>
+        <td>${escapeHtml(sale.customerName || 'Não identificado')}</td>
         <td>${escapeHtml(sale.paymentMethod || '-')}</td>
         <td>${currency(sale.total || 0)}</td>
         <td>${Array.isArray(sale.items) ? sale.items.length : 0}</td>
@@ -321,6 +322,25 @@ export function createSalesModule(ctx) {
     });
   }
 
+  function bindCpfToggle() {
+    const checkbox = tabEls.sales.querySelector('#sale-include-cpf');
+    const wrap = tabEls.sales.querySelector('#sale-cpf-wrap');
+    const input = tabEls.sales.querySelector('#sale-customer-cpf');
+
+    if (!checkbox || !wrap || !input) return;
+
+    const sync = () => {
+      const checked = checkbox.checked;
+      wrap.style.display = checked ? '' : 'none';
+      if (!checked) {
+        input.value = '';
+      }
+    };
+
+    checkbox.addEventListener('change', sync);
+    sync();
+  }
+
   async function finishSale() {
     if (isFinishingSale) return;
     isFinishingSale = true;
@@ -333,7 +353,11 @@ export function createSalesModule(ctx) {
 
       const paymentMethod = tabEls.sales.querySelector('#sale-payment-method')?.value || 'Dinheiro';
       const notes = tabEls.sales.querySelector('textarea[name="notes"]')?.value || '';
-      const customerName = tabEls.sales.querySelector('#sale-customer-name')?.value || 'Balcão';
+      const customerNameRaw = tabEls.sales.querySelector('#sale-customer-name')?.value || '';
+      const includeCpf = Boolean(tabEls.sales.querySelector('#sale-include-cpf')?.checked);
+      const customerCpfRaw = tabEls.sales.querySelector('#sale-customer-cpf')?.value || '';
+      const customerName = String(customerNameRaw).trim() || 'Não identificado';
+      const customerCpf = includeCpf ? String(customerCpfRaw).trim() : '';
       const { subtotal, discount, total, amountPaid, change } = calculateCartTotal();
 
       if (amountPaid < total) {
@@ -351,6 +375,7 @@ export function createSalesModule(ctx) {
 
       const payload = {
         customerName,
+        customerCpf,
         paymentMethod,
         subtotal,
         discount,
@@ -385,11 +410,16 @@ export function createSalesModule(ctx) {
       const searchInput = tabEls.sales.querySelector('#sale-product-search');
       if (searchInput) searchInput.value = '';
 
-      tabEls.sales.querySelector('#sale-customer-name').value = 'Balcão';
+      tabEls.sales.querySelector('#sale-customer-name').value = '';
       tabEls.sales.querySelector('#sale-payment-method').value = paymentMethods?.[0] || 'Dinheiro';
       tabEls.sales.querySelector('input[name="discount"]').value = '0';
       tabEls.sales.querySelector('input[name="amountPaid"]').value = '0';
       tabEls.sales.querySelector('textarea[name="notes"]').value = '';
+
+      const cpfCheck = tabEls.sales.querySelector('#sale-include-cpf');
+      const cpfInput = tabEls.sales.querySelector('#sale-customer-cpf');
+      if (cpfCheck) cpfCheck.checked = false;
+      if (cpfInput) cpfInput.value = '';
 
       showToast('Venda finalizada com sucesso.', 'success');
       render();
@@ -442,7 +472,7 @@ export function createSalesModule(ctx) {
       target: '#sale-client-picker-host',
       onSelect: (client) => {
         const input = tabEls.sales.querySelector('#sale-customer-name');
-        if (input) input.value = client.name || 'Balcão';
+        if (input) input.value = client.name || '';
         closeModal();
       }
     });
@@ -479,7 +509,17 @@ export function createSalesModule(ctx) {
             <div class="form-grid" style="margin-bottom:14px;">
               <label style="grid-column:1 / -1;">
                 Cliente
-                <input id="sale-customer-name" type="text" value="Balcão" />
+                <input id="sale-customer-name" type="text" value="" placeholder="Deixe em branco para não identificado" />
+              </label>
+
+              <label style="grid-column:1 / -1; display:flex; align-items:center; gap:8px;">
+                <input id="sale-include-cpf" type="checkbox" style="width:auto;" />
+                <span>Inserir CPF no cupom</span>
+              </label>
+
+              <label id="sale-cpf-wrap" style="grid-column:1 / -1; display:none;">
+                CPF
+                <input id="sale-customer-cpf" type="text" placeholder="Digite o CPF do cliente" />
               </label>
             </div>
 
@@ -591,7 +631,15 @@ export function createSalesModule(ctx) {
     }, { busyLabel: 'Abrindo...' });
 
     bindAsyncButton(tabEls.sales.querySelector('#sale-clear-client-btn'), async () => {
-      tabEls.sales.querySelector('#sale-customer-name').value = 'Balcão';
+      const clientInput = tabEls.sales.querySelector('#sale-customer-name');
+      const cpfCheck = tabEls.sales.querySelector('#sale-include-cpf');
+      const cpfInput = tabEls.sales.querySelector('#sale-customer-cpf');
+
+      if (clientInput) clientInput.value = '';
+      if (cpfCheck) cpfCheck.checked = false;
+      if (cpfInput) cpfInput.value = '';
+
+      bindCpfToggle();
       showToast('Cliente limpo.', 'info');
     }, { busyLabel: 'Limpando...' });
 
@@ -624,6 +672,7 @@ export function createSalesModule(ctx) {
     renderCart();
     renderHistory();
     updateSaleSummary();
+    bindCpfToggle();
     bindKeyboardShortcuts();
   }
 

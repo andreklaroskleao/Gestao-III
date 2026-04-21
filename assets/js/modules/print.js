@@ -87,8 +87,7 @@ export function createPrintModule(ctx) {
     const address = state.settings?.address || '';
     const phone = state.settings?.phone || state.settings?.storePhone || '';
     const warrantyText = state.settings?.warrantyText || '';
-    const printedAt = formatDateTime();
-    const saleDateTime = sale.createdAt ? formatDateTime(sale.createdAt) : printedAt;
+    const saleDateTime = sale.createdAt ? formatDateTime(sale.createdAt) : formatDateTime();
 
     return `
       <!doctype html>
@@ -286,10 +285,6 @@ export function createPrintModule(ctx) {
               <div class="meta-line">
                 <span class="label">Data/Hora:</span>
                 <span class="value">${escapeHtml(saleDateTime)}</span>
-              </div>
-              <div class="meta-line">
-                <span class="label">Impresso em:</span>
-                <span class="value">${escapeHtml(printedAt)}</span>
               </div>
               <div class="meta-line">
                 <span class="label">Cliente:</span>

@@ -28,11 +28,45 @@ export function createPrintModule(ctx) {
     });
   }
 
-  function formatDateTime(value = null) {
-    const date = value ? new Date(value) : new Date();
-    return Number.isNaN(date.getTime())
-      ? new Date().toLocaleString('pt-BR')
-      : date.toLocaleString('pt-BR');
+  function formatAnyDateTime(value) {
+    if (!value) return '';
+
+    if (typeof value === 'string') {
+      const parsed = new Date(value);
+      if (!Number.isNaN(parsed.getTime())) {
+        return parsed.toLocaleString('pt-BR');
+      }
+      return value;
+    }
+
+    if (value instanceof Date) {
+      if (!Number.isNaN(value.getTime())) {
+        return value.toLocaleString('pt-BR');
+      }
+      return '';
+    }
+
+    if (value?.toDate && typeof value.toDate === 'function') {
+      const parsed = value.toDate();
+      if (!Number.isNaN(parsed.getTime())) {
+        return parsed.toLocaleString('pt-BR');
+      }
+      return '';
+    }
+
+    if (typeof value === 'object' && value.seconds != null) {
+      const parsed = new Date(Number(value.seconds) * 1000);
+      if (!Number.isNaN(parsed.getTime())) {
+        return parsed.toLocaleString('pt-BR');
+      }
+    }
+
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toLocaleString('pt-BR');
+    }
+
+    return '';
   }
 
   function truncateText(text, max = 26) {
@@ -87,7 +121,7 @@ export function createPrintModule(ctx) {
     const address = state.settings?.address || '';
     const phone = state.settings?.phone || state.settings?.storePhone || '';
     const warrantyText = state.settings?.warrantyText || '';
-    const saleDateTime = sale.createdAt ? formatDateTime(sale.createdAt) : formatDateTime();
+    const saleDateTime = String(sale.saleDateTimeLabel || '').trim() || formatAnyDateTime(sale.createdAt) || '';
     const customerName = String(sale.customerName || '').trim() || 'Não identificado';
     const customerCpf = String(sale.customerCpf || '').trim();
 
@@ -286,7 +320,7 @@ export function createPrintModule(ctx) {
             <div class="meta-grid">
               <div class="meta-line">
                 <span class="label">Data/Hora:</span>
-                <span class="value">${escapeHtml(saleDateTime)}</span>
+                <span class="value">${escapeHtml(saleDateTime || '-')}</span>
               </div>
               <div class="meta-line">
                 <span class="label">Cliente:</span>

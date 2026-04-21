@@ -36,8 +36,7 @@ export function createSalesModule(ctx) {
 
   function getActiveProducts() {
     return (state.products || []).filter((item) =>
-      item.deleted !== true
-      && item.status !== 'inativo'
+      item.deleted !== true && item.status !== 'inativo'
     );
   }
 

@@ -1,142 +1,170 @@
-import { renderEmptyState, escapeHtml } from './ui.js';
+import { formatDateTime } from '../services/utils.js';
 
 export function createAuditModule(ctx) {
-  const { state, refs, createDoc, formatDateTime } = ctx;
+  const {
+    state,
+    refs,
+    createDoc
+  } = ctx;
 
-  function log({
-    module,
-    action,
-    entityType,
-    entityId,
+  async function log({
+    module = '',
+    action = '',
+    entityType = '',
+    entityId = '',
     entityLabel = '',
     description = '',
     metadata = {}
-  }) {
-    return createDoc(refs.auditLogs, {
-      module: module || '',
-      action: action || '',
-      entityType: entityType || '',
-      entityId: entityId || '',
-      entityLabel,
-      description,
-      metadata,
-      performedById: state.currentUser?.uid || '',
-      performedByName: state.currentUser?.fullName || '',
-      createdAt: new Date()
-    });
+  } = {}) {
+    try {
+      await createDoc(refs.auditLogs, {
+        module,
+        action,
+        entityType,
+        entityId,
+        entityLabel,
+        description,
+        metadata,
+        userId: state.currentUser?.uid || '',
+        userName: state.currentUser?.fullName || state.currentUser?.email || 'Usuário',
+        deleted: false
+      });
+    } catch (error) {
+      console.error('Erro ao gravar auditoria:', error);
+    }
   }
 
-  function normalizeDateValue(dateLike) {
-    const created = dateLike?.toDate ? dateLike.toDate() : new Date(dateLike || 0);
-    if (Number.isNaN(created.getTime())) return '';
-    return `${created.getFullYear()}-${String(created.getMonth() + 1).padStart(2, '0')}-${String(created.getDate()).padStart(2, '0')}`;
-  }
+  function normalizeDateKey(value) {
+    if (!value) return '';
 
-  function truncateText(value, max = 90) {
-    const text = String(value || '').trim();
-    if (!text) return '-';
-    if (text.length <= max) return text;
-    return `${text.slice(0, max).trim()}...`;
-  }
-
-  function formatMetadata(metadata) {
-    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
-      return '';
+    if (typeof value === 'string') {
+      const parsed = new Date(value);
+      if (!Number.isNaN(parsed.getTime())) {
+        return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`;
+      }
+      return value.slice(0, 10);
     }
 
-    return Object.entries(metadata)
-      .filter(([, value]) => value !== undefined && value !== null && value !== '')
-      .slice(0, 5)
-      .map(([key, value]) => `${key}: ${String(value)}`)
-      .join(' | ');
+    if (value?.toDate && typeof value.toDate === 'function') {
+      const parsed = value.toDate();
+      if (!Number.isNaN(parsed.getTime())) {
+        return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`;
+      }
+    }
+
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) {
+      return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`;
+    }
+
+    return '';
+  }
+
+  function matchFilter(value, filter) {
+    const rawValue = String(value || '').toLowerCase();
+    const rawFilter = String(filter || '').trim().toLowerCase();
+
+    if (!rawFilter) return true;
+    return rawValue.includes(rawFilter);
   }
 
   function getFilteredLogs(filters = {}) {
-    return [...(state.auditLogs || [])]
-      .filter((item) => {
-        const moduleValue = String(item.module || '');
-        const actionValue = String(item.action || '');
-        const entityTypeValue = String(item.entityType || '');
-        const entityLabelValue = String(item.entityLabel || '').toLowerCase();
-        const userValue = String(item.performedByName || '').toLowerCase();
-        const dateValue = normalizeDateValue(item.createdAt);
+    const rows = Array.isArray(state.auditLogs) ? state.auditLogs : [];
 
-        return (!filters.module || moduleValue === filters.module)
-          && (!filters.action || actionValue === filters.action)
-          && (!filters.entityType || entityTypeValue === filters.entityType)
-          && (!filters.entityLabel || entityLabelValue.includes(filters.entityLabel.toLowerCase()))
-          && (!filters.user || userValue.includes(filters.user.toLowerCase()))
-          && (!filters.dateFrom || dateValue >= filters.dateFrom)
-          && (!filters.dateTo || dateValue <= filters.dateTo);
-      })
-      .sort((a, b) => {
-        const da = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : new Date(a.createdAt || 0).getTime();
-        const db = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : new Date(b.createdAt || 0).getTime();
-        return db - da;
-      });
+    return rows.filter((item) => {
+      if (item.deleted === true) return false;
+
+      const createdKey = normalizeDateKey(item.createdAt);
+
+      return matchFilter(item.module, filters.module)
+        && matchFilter(item.action, filters.action)
+        && matchFilter(item.entityType, filters.entityType)
+        && matchFilter(item.entityLabel, filters.entityLabel)
+        && matchFilter(item.userName || item.userId, filters.user)
+        && (!filters.dateFrom || !createdKey || createdKey >= filters.dateFrom)
+        && (!filters.dateTo || !createdKey || createdKey <= filters.dateTo);
+    });
   }
 
-  function renderAuditTable(filters = {}, shouldShow = false, pageSize = 40) {
+  function renderAuditTable(filters = {}, shouldShow = false, limit = 40) {
     if (!shouldShow) {
-      return renderEmptyState('A auditoria será exibida somente depois de aplicar os filtros.');
+      return `
+        <div class="empty-state">
+          <strong>Auditoria oculta</strong>
+          <span>Aplique os filtros para exibir os logs.</span>
+        </div>
+      `;
     }
 
-    const rows = getFilteredLogs(filters);
+    const rows = getFilteredLogs(filters).slice(0, Number(limit || 40));
+
     if (!rows.length) {
-      return renderEmptyState('Nenhum registro encontrado para os filtros informados.');
+      return `
+        <div class="empty-state">
+          <strong>Nenhum log encontrado</strong>
+          <span>Não há registros para os filtros aplicados.</span>
+        </div>
+      `;
     }
-
-    const visibleRows = rows.slice(0, pageSize);
 
     return `
-      <div class="audit-table-scroll">
-        <div class="table-wrap">
-          <table class="audit-table">
-            <thead>
-              <tr>
-                <th>Data</th>
-                <th>Módulo</th>
-                <th>Ação</th>
-                <th>Registro</th>
-                <th>Resumo</th>
-                <th>Usuário</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${visibleRows.map((item) => {
-                const metadataText = formatMetadata(item.metadata);
-                return `
-                  <tr>
-                    <td>${formatDateTime(item.createdAt)}</td>
-                    <td>${escapeHtml(truncateText(item.module || '-', 18))}</td>
-                    <td>${escapeHtml(truncateText(item.action || '-', 18))}</td>
-                    <td>
-                      <strong>${escapeHtml(truncateText(item.entityLabel || '-', 34))}</strong>
-                      <div class="muted" style="margin-top:4px;">${escapeHtml(truncateText(item.entityType || '-', 22))}</div>
-                    </td>
-                    <td>
-                      <div>${escapeHtml(truncateText(item.description || '-', 84))}</div>
-                      ${metadataText ? `<div class="muted" style="margin-top:4px;">${escapeHtml(truncateText(metadataText, 100))}</div>` : ''}
-                    </td>
-                    <td>${escapeHtml(truncateText(item.performedByName || '-', 24))}</td>
-                  </tr>
-                `;
-              }).join('')}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div class="audit-summary-line">
-        <span>Total encontrado: <strong>${rows.length}</strong></span>
-        <span>Exibindo: <strong>${visibleRows.length}</strong></span>
-      </div>
+      <table class="audit-table">
+        <thead>
+          <tr>
+            <th>Data/Hora</th>
+            <th>Módulo</th>
+            <th>Ação</th>
+            <th>Tipo</th>
+            <th>Registro</th>
+            <th>Descrição</th>
+            <th>Usuário</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map((item) => `
+            <tr>
+              <td>${escapeHtml(formatDateTime(item.createdAt))}</td>
+              <td>${escapeHtml(item.module || '-')}</td>
+              <td>${renderActionTag(item.action || '-')}</td>
+              <td>${escapeHtml(item.entityType || '-')}</td>
+              <td>${escapeHtml(item.entityLabel || item.entityId || '-')}</td>
+              <td>${escapeHtml(item.description || '-')}</td>
+              <td>${escapeHtml(item.userName || item.userId || '-')}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
     `;
+  }
+
+  function renderActionTag(action) {
+    const value = String(action || '').toLowerCase();
+    let className = 'tag info';
+
+    if (['create', 'reactivate', 'receive', 'payment'].includes(value)) {
+      className = 'tag success';
+    } else if (['delete'].includes(value)) {
+      className = 'tag danger';
+    } else if (['update', 'inactivate', 'password_change'].includes(value)) {
+      className = 'tag warning';
+    }
+
+    return `<span class="${className}">${escapeHtml(action || '-')}</span>`;
+  }
+
+  function escapeHtml(value = '') {
+    return String(value).replace(/[&<>'"]/g, (char) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      "'": '&#39;',
+      '"': '&quot;'
+    }[char]));
   }
 
   return {
     log,
-    getFilteredLogs,
-    renderAuditTable
+    renderAuditTable,
+    getFilteredLogs
   };
 }

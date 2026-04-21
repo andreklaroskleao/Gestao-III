@@ -15,19 +15,15 @@ export function createSalesModule(ctx) {
     printModule
   } = ctx;
 
-  let streamRef = null;
-  let scanTimer = null;
-  let barcodeTimer = null;
-  let zxingReader = null;
-  let cameraRunning = false;
-  let saleFilters = { customer: '', paymentMethod: '', dateFrom: '', dateTo: '' };
+  let saleFilters = {
+    customer: '',
+    paymentMethod: '',
+    dateFrom: '',
+    dateTo: ''
+  };
+
   let keyboardBound = false;
   let isFinishingSale = false;
-
-  function isMobileDevice() {
-    return /Android|iPhone|iPad|iPod|Mobile|Windows Phone|Opera Mini/i.test(navigator.userAgent)
-      || window.matchMedia('(max-width: 768px)').matches;
-  }
 
   function focusSearchInput() {
     const input = tabEls.sales?.querySelector('#sale-product-search');
@@ -35,6 +31,32 @@ export function createSalesModule(ctx) {
       input.focus();
       input.select?.();
     }
+  }
+
+  function getActiveProducts() {
+    return (state.products || []).filter((item) =>
+      item.deleted !== true && item.status !== 'inativo'
+    );
+  }
+
+  function getProductById(productId) {
+    return getActiveProducts().find((item) => item.id === productId) || null;
+  }
+
+  function getProductByBarcode(barcode) {
+    const value = String(barcode || '').trim();
+    if (!value) return null;
+
+    return getActiveProducts().find((item) => String(item.barcode || '').trim() === value) || null;
+  }
+
+  function getAvailableStock(productId) {
+    const product = getProductById(productId);
+    return Number(product?.quantity || 0);
+  }
+
+  function getCartRow(productId) {
+    return (state.cart || []).find((item) => item.id === productId) || null;
   }
 
   function clearCartWithFeedback() {
@@ -47,7 +69,10 @@ export function createSalesModule(ctx) {
     const discountInput = tabEls.sales?.querySelector('input[name="discount"]');
     const paidInput = tabEls.sales?.querySelector('input[name="amountPaid"]');
 
-    const subtotal = state.cart.reduce((sum, item) => sum + (Number(item.salePrice) * Number(item.quantity)), 0);
+    const subtotal = (state.cart || []).reduce((sum, item) => {
+      return sum + (Number(item.salePrice || 0) * Number(item.quantity || 0));
+    }, 0);
+
     const discount = toNumber(discountInput?.value || 0);
     const total = Math.max(0, subtotal - discount);
     const amountPaid = toNumber(paidInput?.value || 0);
@@ -63,7 +88,7 @@ export function createSalesModule(ctx) {
     tabEls.sales.querySelector('#sale-discount-view').textContent = currency(discount);
     tabEls.sales.querySelector('#sale-total').textContent = currency(total);
     tabEls.sales.querySelector('#sale-change').textContent = currency(change);
-    tabEls.sales.querySelector('#sale-items-count').textContent = String(state.cart.length);
+    tabEls.sales.querySelector('#sale-items-count').textContent = String((state.cart || []).length);
   }
 
   function normalizeSaleForPrint(sale) {
@@ -87,22 +112,13 @@ export function createSalesModule(ctx) {
     };
   }
 
-  function findProductByBarcode(barcode) {
-    const code = String(barcode || '').trim();
-    if (!code) return null;
-
-    return (state.products || []).find((item) =>
-      item.deleted !== true && String(item.barcode || '').trim() === code
-    ) || null;
-  }
-
   function addProductToCart(productId) {
-    const product = (state.products || []).find((item) => item.id === productId && item.deleted !== true);
+    const product = getProductById(productId);
     if (!product) return;
 
-    const existing = state.cart.find((item) => item.id === productId);
+    const existing = getCartRow(productId);
     const currentQty = Number(existing?.quantity || 0);
-    const stockQty = Number(product.quantity || 0);
+    const stockQty = getAvailableStock(productId);
 
     if (currentQty + 1 > stockQty) {
       showToast('Quantidade maior que o estoque disponível.', 'error');
@@ -126,16 +142,15 @@ export function createSalesModule(ctx) {
   }
 
   function changeCartQuantity(productId, delta) {
-    const row = state.cart.find((item) => item.id === productId);
-    const product = (state.products || []).find((item) => item.id === productId && item.deleted !== true);
+    const row = getCartRow(productId);
+    const stockQty = getAvailableStock(productId);
 
-    if (!row || !product) return;
+    if (!row) return;
 
     const nextQty = Number(row.quantity || 0) + Number(delta || 0);
-    const stockQty = Number(product.quantity || 0);
 
     if (nextQty <= 0) {
-      state.cart = state.cart.filter((item) => item.id !== productId);
+      state.cart = (state.cart || []).filter((item) => item.id !== productId);
       render();
       return;
     }
@@ -149,23 +164,12 @@ export function createSalesModule(ctx) {
     render();
   }
 
-  function handleNotFoundBarcode(value) {
-    const input = tabEls.sales.querySelector('#sale-product-search');
-    if (input) {
-      input.value = value || '';
-      input.focus();
-      input.select?.();
-    }
-    handleSaleSearch();
-    showToast('Produto não cadastrado.', 'error');
-  }
-
   function tryAddProductByBarcode(barcode, showWarning = true) {
-    const normalized = String(barcode || '').trim();
-    const product = findProductByBarcode(normalized);
-
+    const product = getProductByBarcode(barcode);
     if (!product) {
-      if (showWarning) handleNotFoundBarcode(normalized);
+      if (showWarning) {
+        showToast('Produto não cadastrado.', 'error');
+      }
       return false;
     }
 
@@ -197,11 +201,12 @@ export function createSalesModule(ctx) {
       return;
     }
 
-    const results = (state.products || [])
+    const results = getActiveProducts()
       .filter((product) =>
-        product.deleted !== true
-        && product.status !== 'inativo'
-        && [product.name, product.barcode, product.brand, product.supplier].join(' ').toLowerCase().includes(term)
+        [product.name, product.barcode, product.brand, product.supplier]
+          .join(' ')
+          .toLowerCase()
+          .includes(term)
       )
       .slice(0, 8);
 
@@ -227,10 +232,9 @@ export function createSalesModule(ctx) {
 
   function renderCart() {
     const cartEl = tabEls.sales.querySelector('#sale-cart-items');
-
     if (!cartEl) return;
 
-    if (!state.cart.length) {
+    if (!(state.cart || []).length) {
       cartEl.innerHTML = `
         <div class="empty-state">
           <strong>Carrinho vazio</strong>
@@ -285,7 +289,9 @@ export function createSalesModule(ctx) {
       const customer = String(sale.customerName || '').toLowerCase();
       const paymentMethod = String(sale.paymentMethod || '');
       const created = sale.createdAt?.toDate ? sale.createdAt.toDate() : new Date(sale.createdAt || 0);
-      const createdKey = Number.isNaN(created.getTime()) ? '' : `${created.getFullYear()}-${String(created.getMonth() + 1).padStart(2, '0')}-${String(created.getDate()).padStart(2, '0')}`;
+      const createdKey = Number.isNaN(created.getTime())
+        ? ''
+        : `${created.getFullYear()}-${String(created.getMonth() + 1).padStart(2, '0')}-${String(created.getDate()).padStart(2, '0')}`;
 
       return (!saleFilters.customer || customer.includes(saleFilters.customer.toLowerCase()))
         && (!saleFilters.paymentMethod || paymentMethod === saleFilters.paymentMethod)
@@ -322,13 +328,14 @@ export function createSalesModule(ctx) {
     isFinishingSale = true;
 
     try {
-      if (!state.cart.length) {
+      if (!(state.cart || []).length) {
         alert('Adicione pelo menos um produto à venda.');
         return;
       }
 
       const paymentMethod = tabEls.sales.querySelector('#sale-payment-method')?.value || 'Dinheiro';
       const notes = tabEls.sales.querySelector('textarea[name="notes"]')?.value || '';
+      const customerName = tabEls.sales.querySelector('#sale-customer-name')?.value || 'Balcão';
       const { subtotal, discount, total, amountPaid, change } = calculateCartTotal();
 
       if (amountPaid < total) {
@@ -345,7 +352,7 @@ export function createSalesModule(ctx) {
       }));
 
       const payload = {
-        customerName: tabEls.sales.querySelector('#sale-customer-name')?.value || 'Balcão',
+        customerName,
         paymentMethod,
         subtotal,
         discount,
@@ -361,7 +368,7 @@ export function createSalesModule(ctx) {
       const saleId = await createDoc(refs.sales, payload);
 
       for (const item of items) {
-        const product = (state.products || []).find((row) => row.id === item.productId);
+        const product = getProductById(item.productId);
         if (!product) continue;
 
         await updateByPath('products', item.productId, {
@@ -377,6 +384,7 @@ export function createSalesModule(ctx) {
       state.cart = [];
       const searchInput = tabEls.sales.querySelector('#sale-product-search');
       if (searchInput) searchInput.value = '';
+
       tabEls.sales.querySelector('#sale-customer-name').value = 'Balcão';
       tabEls.sales.querySelector('#sale-payment-method').value = paymentMethods?.[0] || 'Dinheiro';
       tabEls.sales.querySelector('input[name="discount"]').value = '0';
@@ -401,6 +409,41 @@ export function createSalesModule(ctx) {
       if (event.key === 'F2') {
         event.preventDefault();
         focusSearchInput();
+      }
+    });
+  }
+
+  function openClientPicker() {
+    const modalRoot = document.getElementById('modal-root');
+    if (!modalRoot) return;
+
+    modalRoot.innerHTML = `
+      <div class="modal-backdrop" id="sale-client-modal-backdrop">
+        <div class="modal-card">
+          <div class="section-header">
+            <h2>Selecionar cliente</h2>
+            <button class="btn btn-secondary" type="button" id="sale-client-modal-close">Fechar</button>
+          </div>
+          <div id="sale-client-picker-host"></div>
+        </div>
+      </div>
+    `;
+
+    const closeModal = () => {
+      modalRoot.innerHTML = '';
+    };
+
+    modalRoot.querySelector('#sale-client-modal-close')?.addEventListener('click', closeModal);
+    modalRoot.querySelector('#sale-client-modal-backdrop')?.addEventListener('click', (event) => {
+      if (event.target.id === 'sale-client-modal-backdrop') closeModal();
+    });
+
+    clientsModule.renderClientPicker?.({
+      target: '#sale-client-picker-host',
+      onSelect: (client) => {
+        const input = tabEls.sales.querySelector('#sale-customer-name');
+        if (input) input.value = client.name || 'Balcão';
+        closeModal();
       }
     });
   }
@@ -576,41 +619,6 @@ export function createSalesModule(ctx) {
     renderHistory();
     updateSaleSummary();
     bindKeyboardShortcuts();
-  }
-
-  function openClientPicker() {
-    const modalRoot = document.getElementById('modal-root');
-    if (!modalRoot) return;
-
-    modalRoot.innerHTML = `
-      <div class="modal-backdrop" id="sale-client-modal-backdrop">
-        <div class="modal-card">
-          <div class="section-header">
-            <h2>Selecionar cliente</h2>
-            <button class="btn btn-secondary" type="button" id="sale-client-modal-close">Fechar</button>
-          </div>
-          <div id="sale-client-picker-host"></div>
-        </div>
-      </div>
-    `;
-
-    const closeModal = () => {
-      modalRoot.innerHTML = '';
-    };
-
-    modalRoot.querySelector('#sale-client-modal-close')?.addEventListener('click', closeModal);
-    modalRoot.querySelector('#sale-client-modal-backdrop')?.addEventListener('click', (event) => {
-      if (event.target.id === 'sale-client-modal-backdrop') closeModal();
-    });
-
-    clientsModule.renderClientPicker?.({
-      target: '#sale-client-picker-host',
-      onSelect: (client) => {
-        const input = tabEls.sales.querySelector('#sale-customer-name');
-        if (input) input.value = client.name || 'Balcão';
-        closeModal();
-      }
-    });
   }
 
   return {

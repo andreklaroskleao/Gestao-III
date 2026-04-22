@@ -24,6 +24,7 @@ import { createPayablesModule } from './modules/payables.js';
 import { createPurchasesModule } from './modules/purchases.js';
 import { createCashierModule } from './modules/cashier.js';
 import { createAccountsModule } from './modules/accounts.js';
+import { createNotificationsModule } from './modules/notifications.js';
 
 import {
   login,
@@ -425,7 +426,9 @@ function activateTab(tab) {
 }
 
 function renderBlockedPanel(tab) {
-  if (tabEls[tab]) tabEls[tab].innerHTML = renderBlocked();
+  if (tabEls[tab]) {
+    tabEls[tab].innerHTML = renderBlocked();
+  }
 }
 
 function refreshNavigationPermissions() {
@@ -445,47 +448,69 @@ function refreshNavigationPermissions() {
 }
 
 function renderDashboard() {
-  hasPermission(state.currentUser, 'dashboard') ? dashboardModule.render() : renderBlockedPanel('dashboard');
+  hasPermission(state.currentUser, 'dashboard')
+    ? dashboardModule.render()
+    : renderBlockedPanel('dashboard');
 }
 
 function renderProducts() {
-  hasPermission(state.currentUser, 'products') ? productsModule.render() : renderBlockedPanel('products');
+  hasPermission(state.currentUser, 'products')
+    ? productsModule.render()
+    : renderBlockedPanel('products');
 }
 
 function renderSales() {
-  hasPermission(state.currentUser, 'sales') ? salesModule.render() : renderBlockedPanel('sales');
+  hasPermission(state.currentUser, 'sales')
+    ? salesModule.render()
+    : renderBlockedPanel('sales');
 }
 
 function renderReports() {
-  hasPermission(state.currentUser, 'reports') ? reportsModule.render() : renderBlockedPanel('reports');
+  hasPermission(state.currentUser, 'reports')
+    ? reportsModule.render()
+    : renderBlockedPanel('reports');
 }
 
 function renderDeliveries() {
-  hasPermission(state.currentUser, 'deliveries') ? deliveriesModule.render() : renderBlockedPanel('deliveries');
+  hasPermission(state.currentUser, 'deliveries')
+    ? deliveriesModule.render()
+    : renderBlockedPanel('deliveries');
 }
 
 function renderClients() {
-  hasPermission(state.currentUser, 'clients') ? clientsTabModule.render() : renderBlockedPanel('clients');
+  hasPermission(state.currentUser, 'clients')
+    ? clientsTabModule.render()
+    : renderBlockedPanel('clients');
 }
 
 function renderSuppliers() {
-  hasPermission(state.currentUser, 'suppliers') ? suppliersModule.render() : renderBlockedPanel('suppliers');
+  hasPermission(state.currentUser, 'suppliers')
+    ? suppliersModule.render()
+    : renderBlockedPanel('suppliers');
 }
 
 function renderPurchases() {
-  hasPermission(state.currentUser, 'purchases') ? purchasesModule.render() : renderBlockedPanel('purchases');
+  hasPermission(state.currentUser, 'purchases')
+    ? purchasesModule.render()
+    : renderBlockedPanel('purchases');
 }
 
 function renderPayables() {
-  hasPermission(state.currentUser, 'payables') ? payablesModule.render() : renderBlockedPanel('payables');
+  hasPermission(state.currentUser, 'payables')
+    ? payablesModule.render()
+    : renderBlockedPanel('payables');
 }
 
 function renderUsers() {
-  hasPermission(state.currentUser, 'users') ? usersModule.render() : renderBlockedPanel('users');
+  hasPermission(state.currentUser, 'users')
+    ? usersModule.render()
+    : renderBlockedPanel('users');
 }
 
 function renderSettings() {
-  hasPermission(state.currentUser, 'settings') ? settingsModule.render() : renderBlockedPanel('settings');
+  hasPermission(state.currentUser, 'settings')
+    ? settingsModule.render()
+    : renderBlockedPanel('settings');
 }
 
 function renderActiveTab() {
@@ -557,6 +582,13 @@ function resetAppState() {
   state.purchaseOrders = [];
   state.purchases = [];
   state.cart = [];
+  state.editingProductId = null;
+  state.editingUserId = null;
+  state.editingDeliveryId = null;
+  state.editingClientId = null;
+  state.editingSupplierId = null;
+  state.editingPayableId = null;
+  state.editingPurchaseId = null;
 
   document.body.classList.remove('sidebar-open');
 
@@ -621,6 +653,13 @@ function bootstrapData() {
     renderSales();
     renderReports();
     renderDashboard();
+
+    try {
+      notificationsModule.generateSystemNotifications?.();
+      notificationsModule.updateBellBadge?.();
+    } catch (error) {
+      console.error(error);
+    }
   }));
 
   state.unsubscribe.push(subscribeCollection('sales', [orderBy('createdAt', 'desc')], (rows) => {
@@ -634,6 +673,13 @@ function bootstrapData() {
     state.deliveries = rows;
     renderDeliveries();
     renderDashboard();
+
+    try {
+      notificationsModule.generateSystemNotifications?.();
+      notificationsModule.updateBellBadge?.();
+    } catch (error) {
+      console.error(error);
+    }
   }));
 
   state.unsubscribe.push(subscribeCollection('settings', [orderBy('createdAt', 'desc')], (rows) => {
@@ -648,6 +694,13 @@ function bootstrapData() {
 
     renderSettings();
     renderDashboard();
+
+    try {
+      notificationsModule.generateSystemNotifications?.();
+      notificationsModule.updateBellBadge?.();
+    } catch (error) {
+      console.error(error);
+    }
   }));
 
   state.unsubscribe.push(subscribeCollection('inventory_movements', [orderBy('createdAt', 'desc')], (rows) => {
@@ -687,12 +740,26 @@ function bootstrapData() {
     state.accountsReceivable = rows;
     renderClients();
     renderDashboard();
+
+    try {
+      notificationsModule.generateSystemNotifications?.();
+      notificationsModule.updateBellBadge?.();
+    } catch (error) {
+      console.error(error);
+    }
   }));
 
   state.unsubscribe.push(subscribeCollection('accounts_payable', [orderBy('createdAt', 'desc')], (rows) => {
     state.accountsPayable = rows;
     renderPayables();
     renderDashboard();
+
+    try {
+      notificationsModule.generateSystemNotifications?.();
+      notificationsModule.updateBellBadge?.();
+    } catch (error) {
+      console.error(error);
+    }
   }));
 
   state.unsubscribe.push(subscribeCollection('purchase_orders', [orderBy('createdAt', 'desc')], (rows) => {
@@ -707,6 +774,7 @@ function bootstrapData() {
 
   state.unsubscribe.push(subscribeCollection('notifications', [orderBy('createdAt', 'desc')], (rows) => {
     state.notifications = rows.filter((item) => item.deleted !== true);
+
     try {
       notificationsModule.updateBellBadge?.();
     } catch (error) {
@@ -808,6 +876,57 @@ function openActionsSheet(title, actions = []) {
   });
 }
 
+function openConfirmDeleteModal({
+  title = 'Confirmar exclusão',
+  message = 'Deseja realmente excluir este registro?',
+  confirmLabel = 'Excluir',
+  onConfirm
+} = {}) {
+  const root = document.getElementById('modal-root');
+  if (!root) return;
+
+  root.innerHTML = `
+    <div class="modal-backdrop" id="confirm-delete-backdrop">
+      <div class="modal-card confirm-delete-modal">
+        <div class="section-header">
+          <h2>${title}</h2>
+          <button class="btn btn-secondary" type="button" id="confirm-delete-close">Fechar</button>
+        </div>
+
+        <div class="empty-state" style="text-align:left;">
+          <strong>Atenção</strong>
+          <span>${message}</span>
+        </div>
+
+        <div class="form-actions" style="margin-top:16px; justify-content:flex-end;">
+          <button class="btn btn-secondary" type="button" id="confirm-delete-cancel">Cancelar</button>
+          <button class="btn btn-danger" type="button" id="confirm-delete-confirm">${confirmLabel}</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const closeModal = () => {
+    root.innerHTML = '';
+  };
+
+  root.querySelector('#confirm-delete-close')?.addEventListener('click', closeModal);
+  root.querySelector('#confirm-delete-cancel')?.addEventListener('click', closeModal);
+  root.querySelector('#confirm-delete-backdrop')?.addEventListener('click', (event) => {
+    if (event.target.id === 'confirm-delete-backdrop') {
+      closeModal();
+    }
+  });
+
+  root.querySelector('#confirm-delete-confirm')?.addEventListener('click', async () => {
+    try {
+      await onConfirm?.();
+    } finally {
+      closeModal();
+    }
+  });
+}
+
 function buildGlobalSearchIndex() {
   const entries = [];
 
@@ -838,6 +957,26 @@ function buildGlobalSearchIndex() {
       subtitle: `${item.phone || 'Sem telefone'} · ${item.email || 'Sem e-mail'}`,
       tab: 'suppliers',
       search: [item.name, item.contactName, item.phone, item.email, item.document].join(' ').toLowerCase()
+    });
+  });
+
+  (state.sales || []).filter((item) => item.deleted !== true).slice(0, 100).forEach((item) => {
+    entries.push({
+      type: 'sale',
+      label: item.customerName || 'Venda balcão',
+      subtitle: `${currency(item.total || 0)} · ${formatDateTime(item.createdAt)}`,
+      tab: 'sales',
+      search: [item.customerName, item.paymentMethod, item.cashierName].join(' ').toLowerCase()
+    });
+  });
+
+  (state.deliveries || []).filter((item) => item.deleted !== true).forEach((item) => {
+    entries.push({
+      type: 'delivery',
+      label: item.customerName || 'Entrega',
+      subtitle: `${item.phone || 'Sem telefone'} · ${item.status || 'Sem status'}`,
+      tab: 'deliveries',
+      search: [item.customerName, item.phone, item.address, item.status].join(' ').toLowerCase()
     });
   });
 
@@ -908,6 +1047,7 @@ function performGlobalSearch(rawTerm) {
 
 window.openActionsSheet = openActionsSheet;
 window.closeActionsSheet = closeActionsSheet;
+window.openConfirmDeleteModal = openConfirmDeleteModal;
 
 if (els.loginForm) {
   els.loginForm.addEventListener('submit', handleLogin);
@@ -973,7 +1113,7 @@ els.globalSearchInput?.addEventListener('input', () => {
 try {
   notificationsModule.bindBell?.();
 } catch (error) {
-  console.error(error);
+  console.error('Erro ao vincular sino de notificações:', error);
 }
 
 watchAuth(async (user) => {

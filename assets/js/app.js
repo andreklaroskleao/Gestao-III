@@ -70,16 +70,13 @@ const els = {
   currentUserName: document.getElementById('current-user-name'),
   storeNameSide: document.getElementById('store-name-side'),
   nav: document.getElementById('main-nav'),
-  stockAlertBtn: document.getElementById('stock-alert-btn'),
-  stockAlertCount: document.getElementById('stock-alert-count'),
-  stockAlertList: document.getElementById('stock-alert-list'),
-  alertsPanel: document.getElementById('alerts-panel'),
-  notificationsBellBtn: document.getElementById('notifications-bell-btn'),
-  notificationsBadge: document.getElementById('notifications-badge'),
   sidebarToggle: document.getElementById('sidebar-toggle'),
   mobileSidebarToggle: document.getElementById('mobile-sidebar-toggle'),
   globalSearchInput: document.getElementById('global-search-input'),
-  globalSearchBtn: document.getElementById('global-search-btn')
+  globalSearchBtn: document.getElementById('global-search-btn'),
+  notificationsBellBtn: document.getElementById('notifications-bell-btn'),
+  notificationsBadge: document.getElementById('notifications-badge'),
+  installAppBtn: document.getElementById('install-app-btn')
 };
 
 const tabEls = {
@@ -394,6 +391,7 @@ function setScreen(isAuthenticated) {
 }
 
 function activateTab(tab) {
+  if (!tabEls[tab]) tab = 'dashboard';
   state.activeTab = tab;
 
   document.querySelectorAll('.tab-panel').forEach((panel) => {
@@ -433,77 +431,63 @@ function renderBlockedPanel(tab) {
 }
 
 function refreshNavigationPermissions() {
+  const activeTabStillAllowed = hasPermission(state.currentUser, state.activeTab);
+
   document.querySelectorAll('.nav-item').forEach((item) => {
     const allowed = hasPermission(state.currentUser, item.dataset.tab);
     item.disabled = !allowed;
     item.style.opacity = allowed ? '1' : '.45';
+    item.style.display = allowed ? '' : 'none';
   });
+
+  if (!activeTabStillAllowed) {
+    state.activeTab = 'dashboard';
+    activateTab('dashboard');
+  }
 }
 
 function renderDashboard() {
-  hasPermission(state.currentUser, 'dashboard')
-    ? dashboardModule.render()
-    : renderBlockedPanel('dashboard');
+  hasPermission(state.currentUser, 'dashboard') ? dashboardModule.render() : renderBlockedPanel('dashboard');
 }
 
 function renderProducts() {
-  hasPermission(state.currentUser, 'products')
-    ? productsModule.render()
-    : renderBlockedPanel('products');
+  hasPermission(state.currentUser, 'products') ? productsModule.render() : renderBlockedPanel('products');
 }
 
 function renderSales() {
-  hasPermission(state.currentUser, 'sales')
-    ? salesModule.render()
-    : renderBlockedPanel('sales');
+  hasPermission(state.currentUser, 'sales') ? salesModule.render() : renderBlockedPanel('sales');
 }
 
 function renderReports() {
-  hasPermission(state.currentUser, 'reports')
-    ? reportsModule.render()
-    : renderBlockedPanel('reports');
+  hasPermission(state.currentUser, 'reports') ? reportsModule.render() : renderBlockedPanel('reports');
 }
 
 function renderDeliveries() {
-  hasPermission(state.currentUser, 'deliveries')
-    ? deliveriesModule.render()
-    : renderBlockedPanel('deliveries');
+  hasPermission(state.currentUser, 'deliveries') ? deliveriesModule.render() : renderBlockedPanel('deliveries');
 }
 
 function renderClients() {
-  hasPermission(state.currentUser, 'clients')
-    ? clientsTabModule.render()
-    : renderBlockedPanel('clients');
+  hasPermission(state.currentUser, 'clients') ? clientsTabModule.render() : renderBlockedPanel('clients');
 }
 
 function renderSuppliers() {
-  hasPermission(state.currentUser, 'suppliers')
-    ? suppliersModule.render()
-    : renderBlockedPanel('suppliers');
+  hasPermission(state.currentUser, 'suppliers') ? suppliersModule.render() : renderBlockedPanel('suppliers');
 }
 
 function renderPurchases() {
-  hasPermission(state.currentUser, 'purchases')
-    ? purchasesModule.render()
-    : renderBlockedPanel('purchases');
+  hasPermission(state.currentUser, 'purchases') ? purchasesModule.render() : renderBlockedPanel('purchases');
 }
 
 function renderPayables() {
-  hasPermission(state.currentUser, 'payables')
-    ? payablesModule.render()
-    : renderBlockedPanel('payables');
+  hasPermission(state.currentUser, 'payables') ? payablesModule.render() : renderBlockedPanel('payables');
 }
 
 function renderUsers() {
-  hasPermission(state.currentUser, 'users')
-    ? usersModule.render()
-    : renderBlockedPanel('users');
+  hasPermission(state.currentUser, 'users') ? usersModule.render() : renderBlockedPanel('users');
 }
 
 function renderSettings() {
-  hasPermission(state.currentUser, 'settings')
-    ? settingsModule.render()
-    : renderBlockedPanel('settings');
+  hasPermission(state.currentUser, 'settings') ? settingsModule.render() : renderBlockedPanel('settings');
 }
 
 function renderActiveTab() {
@@ -535,8 +519,13 @@ function renderApp() {
   renderUsers();
   renderSettings();
   refreshNavigationPermissions();
-  notificationsModule.generateSystemNotifications();
-  notificationsModule.updateBellBadge();
+
+  try {
+    notificationsModule.generateSystemNotifications?.();
+    notificationsModule.updateBellBadge?.();
+  } catch (error) {
+    console.error('Erro ao atualizar notificações:', error);
+  }
 }
 
 function unsubscribeAll() {
@@ -601,13 +590,39 @@ function resetAppState() {
   closeActionsSheet();
 }
 
+function refreshCurrentUserFromRows(rows) {
+  if (!state.currentUser?.uid) return;
+
+  const freshCurrentUser = rows.find((item) =>
+    item.id === state.currentUser.uid ||
+    item.uid === state.currentUser.uid ||
+    item.email === state.currentUser.email
+  );
+
+  if (!freshCurrentUser) return;
+
+  state.currentUser = {
+    ...state.currentUser,
+    ...freshCurrentUser,
+    uid: state.currentUser.uid,
+    email: state.currentUser.email || freshCurrentUser.email || ''
+  };
+
+  if (els.currentUserName) {
+    els.currentUserName.textContent = `${state.currentUser.fullName || ''} · ${state.currentUser.accessLevel || 'standard'}`;
+  }
+}
+
 function bootstrapData() {
   unsubscribeAll();
 
   state.unsubscribe.push(subscribeCollection('users', [orderBy('fullName')], (rows) => {
     state.users = rows;
+    refreshCurrentUserFromRows(rows);
+    refreshNavigationPermissions();
     renderUsers();
     renderDashboard();
+    renderActiveTab();
   }));
 
   state.unsubscribe.push(subscribeCollection('products', [orderBy('name')], (rows) => {
@@ -616,8 +631,13 @@ function bootstrapData() {
     renderSales();
     renderReports();
     renderDashboard();
-    notificationsModule.generateSystemNotifications();
-    notificationsModule.updateBellBadge();
+
+    try {
+      notificationsModule.generateSystemNotifications?.();
+      notificationsModule.updateBellBadge?.();
+    } catch (error) {
+      console.error(error);
+    }
   }));
 
   state.unsubscribe.push(subscribeCollection('sales', [orderBy('createdAt', 'desc')], (rows) => {
@@ -631,8 +651,13 @@ function bootstrapData() {
     state.deliveries = rows;
     renderDeliveries();
     renderDashboard();
-    notificationsModule.generateSystemNotifications();
-    notificationsModule.updateBellBadge();
+
+    try {
+      notificationsModule.generateSystemNotifications?.();
+      notificationsModule.updateBellBadge?.();
+    } catch (error) {
+      console.error(error);
+    }
   }));
 
   state.unsubscribe.push(subscribeCollection('settings', [orderBy('createdAt', 'desc')], (rows) => {
@@ -647,8 +672,13 @@ function bootstrapData() {
 
     renderSettings();
     renderDashboard();
-    notificationsModule.generateSystemNotifications();
-    notificationsModule.updateBellBadge();
+
+    try {
+      notificationsModule.generateSystemNotifications?.();
+      notificationsModule.updateBellBadge?.();
+    } catch (error) {
+      console.error(error);
+    }
   }));
 
   state.unsubscribe.push(subscribeCollection('inventory_movements', [orderBy('createdAt', 'desc')], (rows) => {
@@ -688,16 +718,26 @@ function bootstrapData() {
     state.accountsReceivable = rows;
     renderClients();
     renderDashboard();
-    notificationsModule.generateSystemNotifications();
-    notificationsModule.updateBellBadge();
+
+    try {
+      notificationsModule.generateSystemNotifications?.();
+      notificationsModule.updateBellBadge?.();
+    } catch (error) {
+      console.error(error);
+    }
   }));
 
   state.unsubscribe.push(subscribeCollection('accounts_payable', [orderBy('createdAt', 'desc')], (rows) => {
     state.accountsPayable = rows;
     renderPayables();
     renderDashboard();
-    notificationsModule.generateSystemNotifications();
-    notificationsModule.updateBellBadge();
+
+    try {
+      notificationsModule.generateSystemNotifications?.();
+      notificationsModule.updateBellBadge?.();
+    } catch (error) {
+      console.error(error);
+    }
   }));
 
   state.unsubscribe.push(subscribeCollection('purchase_orders', [orderBy('createdAt', 'desc')], (rows) => {
@@ -712,7 +752,12 @@ function bootstrapData() {
 
   state.unsubscribe.push(subscribeCollection('notifications', [orderBy('createdAt', 'desc')], (rows) => {
     state.notifications = rows.filter((item) => item.deleted !== true);
-    notificationsModule.updateBellBadge();
+
+    try {
+      notificationsModule.updateBellBadge?.();
+    } catch (error) {
+      console.error(error);
+    }
   }));
 }
 
@@ -1034,7 +1079,11 @@ els.globalSearchInput?.addEventListener('input', () => {
   }
 });
 
-notificationsModule.bindBell();
+try {
+  notificationsModule.bindBell?.();
+} catch (error) {
+  console.error('Erro ao vincular sino de notificações:', error);
+}
 
 watchAuth(async (user) => {
   state.currentUser = user;

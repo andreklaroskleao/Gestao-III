@@ -131,6 +131,7 @@ const state = {
 };
 
 const SIDEBAR_STORAGE_KEY = 'gestao-sidebar-collapsed';
+let authBootstrapped = false;
 
 function isMobileViewport() {
   return window.matchMedia('(max-width: 920px)').matches;
@@ -253,7 +254,7 @@ const accountsModule = createAccountsModule({
   auditModule
 });
 
-const receivablesAlertsModule = createReceivablesAlertsModule({ state });
+createReceivablesAlertsModule({ state });
 
 const notificationsModule = createNotificationsModule({
   state,
@@ -425,9 +426,7 @@ function activateTab(tab) {
 }
 
 function renderBlockedPanel(tab) {
-  if (tabEls[tab]) {
-    tabEls[tab].innerHTML = renderBlocked();
-  }
+  if (tabEls[tab]) tabEls[tab].innerHTML = renderBlocked();
 }
 
 function refreshNavigationPermissions() {
@@ -536,7 +535,6 @@ function unsubscribeAll() {
       console.error(error);
     }
   });
-
   state.unsubscribe = [];
 }
 
@@ -560,13 +558,6 @@ function resetAppState() {
   state.purchaseOrders = [];
   state.purchases = [];
   state.cart = [];
-  state.editingProductId = null;
-  state.editingUserId = null;
-  state.editingDeliveryId = null;
-  state.editingClientId = null;
-  state.editingSupplierId = null;
-  state.editingPayableId = null;
-  state.editingPurchaseId = null;
 
   document.body.classList.remove('sidebar-open');
 
@@ -631,13 +622,6 @@ function bootstrapData() {
     renderSales();
     renderReports();
     renderDashboard();
-
-    try {
-      notificationsModule.generateSystemNotifications?.();
-      notificationsModule.updateBellBadge?.();
-    } catch (error) {
-      console.error(error);
-    }
   }));
 
   state.unsubscribe.push(subscribeCollection('sales', [orderBy('createdAt', 'desc')], (rows) => {
@@ -651,13 +635,6 @@ function bootstrapData() {
     state.deliveries = rows;
     renderDeliveries();
     renderDashboard();
-
-    try {
-      notificationsModule.generateSystemNotifications?.();
-      notificationsModule.updateBellBadge?.();
-    } catch (error) {
-      console.error(error);
-    }
   }));
 
   state.unsubscribe.push(subscribeCollection('settings', [orderBy('createdAt', 'desc')], (rows) => {
@@ -672,13 +649,6 @@ function bootstrapData() {
 
     renderSettings();
     renderDashboard();
-
-    try {
-      notificationsModule.generateSystemNotifications?.();
-      notificationsModule.updateBellBadge?.();
-    } catch (error) {
-      console.error(error);
-    }
   }));
 
   state.unsubscribe.push(subscribeCollection('inventory_movements', [orderBy('createdAt', 'desc')], (rows) => {
@@ -718,26 +688,12 @@ function bootstrapData() {
     state.accountsReceivable = rows;
     renderClients();
     renderDashboard();
-
-    try {
-      notificationsModule.generateSystemNotifications?.();
-      notificationsModule.updateBellBadge?.();
-    } catch (error) {
-      console.error(error);
-    }
   }));
 
   state.unsubscribe.push(subscribeCollection('accounts_payable', [orderBy('createdAt', 'desc')], (rows) => {
     state.accountsPayable = rows;
     renderPayables();
     renderDashboard();
-
-    try {
-      notificationsModule.generateSystemNotifications?.();
-      notificationsModule.updateBellBadge?.();
-    } catch (error) {
-      console.error(error);
-    }
   }));
 
   state.unsubscribe.push(subscribeCollection('purchase_orders', [orderBy('createdAt', 'desc')], (rows) => {
@@ -752,7 +708,6 @@ function bootstrapData() {
 
   state.unsubscribe.push(subscribeCollection('notifications', [orderBy('createdAt', 'desc')], (rows) => {
     state.notifications = rows.filter((item) => item.deleted !== true);
-
     try {
       notificationsModule.updateBellBadge?.();
     } catch (error) {
@@ -768,13 +723,22 @@ async function handleLogin(event) {
 
   try {
     const result = await login(values.email, values.password);
+
     state.currentUser = {
       ...result.profile,
       uid: result.user.uid,
       email: result.user.email
     };
+
+    setScreen(true);
+
+    if (els.currentUserName) {
+      els.currentUserName.textContent = `${state.currentUser.fullName || ''} · ${state.currentUser.accessLevel || 'standard'}`;
+    }
+
     showToast('Login realizado com sucesso.', 'success');
   } catch (error) {
+    setScreen(false);
     alert(error.message || 'Erro ao entrar.');
   }
 }
@@ -845,57 +809,6 @@ function openActionsSheet(title, actions = []) {
   });
 }
 
-function openConfirmDeleteModal({
-  title = 'Confirmar exclusão',
-  message = 'Deseja realmente excluir este registro?',
-  confirmLabel = 'Excluir',
-  onConfirm
-} = {}) {
-  const root = document.getElementById('modal-root');
-  if (!root) return;
-
-  root.innerHTML = `
-    <div class="modal-backdrop" id="confirm-delete-backdrop">
-      <div class="modal-card confirm-delete-modal">
-        <div class="section-header">
-          <h2>${title}</h2>
-          <button class="btn btn-secondary" type="button" id="confirm-delete-close">Fechar</button>
-        </div>
-
-        <div class="empty-state" style="text-align:left;">
-          <strong>Atenção</strong>
-          <span>${message}</span>
-        </div>
-
-        <div class="form-actions" style="margin-top:16px; justify-content:flex-end;">
-          <button class="btn btn-secondary" type="button" id="confirm-delete-cancel">Cancelar</button>
-          <button class="btn btn-danger" type="button" id="confirm-delete-confirm">${confirmLabel}</button>
-        </div>
-      </div>
-    </div>
-  `;
-
-  const closeModal = () => {
-    root.innerHTML = '';
-  };
-
-  root.querySelector('#confirm-delete-close')?.addEventListener('click', closeModal);
-  root.querySelector('#confirm-delete-cancel')?.addEventListener('click', closeModal);
-  root.querySelector('#confirm-delete-backdrop')?.addEventListener('click', (event) => {
-    if (event.target.id === 'confirm-delete-backdrop') {
-      closeModal();
-    }
-  });
-
-  root.querySelector('#confirm-delete-confirm')?.addEventListener('click', async () => {
-    try {
-      await onConfirm?.();
-    } finally {
-      closeModal();
-    }
-  });
-}
-
 function buildGlobalSearchIndex() {
   const entries = [];
 
@@ -926,26 +839,6 @@ function buildGlobalSearchIndex() {
       subtitle: `${item.phone || 'Sem telefone'} · ${item.email || 'Sem e-mail'}`,
       tab: 'suppliers',
       search: [item.name, item.contactName, item.phone, item.email, item.document].join(' ').toLowerCase()
-    });
-  });
-
-  (state.sales || []).filter((item) => item.deleted !== true).slice(0, 100).forEach((item) => {
-    entries.push({
-      type: 'sale',
-      label: item.customerName || 'Venda balcão',
-      subtitle: `${currency(item.total || 0)} · ${formatDateTime(item.createdAt)}`,
-      tab: 'sales',
-      search: [item.customerName, item.paymentMethod, item.cashierName].join(' ').toLowerCase()
-    });
-  });
-
-  (state.deliveries || []).filter((item) => item.deleted !== true).forEach((item) => {
-    entries.push({
-      type: 'delivery',
-      label: item.customerName || 'Entrega',
-      subtitle: `${item.phone || 'Sem telefone'} · ${item.status || 'Sem status'}`,
-      tab: 'deliveries',
-      search: [item.customerName, item.phone, item.address, item.status].join(' ').toLowerCase()
     });
   });
 
@@ -1016,7 +909,6 @@ function performGlobalSearch(rawTerm) {
 
 window.openActionsSheet = openActionsSheet;
 window.closeActionsSheet = closeActionsSheet;
-window.openConfirmDeleteModal = openConfirmDeleteModal;
 
 if (els.loginForm) {
   els.loginForm.addEventListener('submit', handleLogin);
@@ -1082,11 +974,13 @@ els.globalSearchInput?.addEventListener('input', () => {
 try {
   notificationsModule.bindBell?.();
 } catch (error) {
-  console.error('Erro ao vincular sino de notificações:', error);
+  console.error(error);
 }
 
 watchAuth(async (user) => {
-  state.currentUser = user;
+  if (!authBootstrapped) {
+    authBootstrapped = true;
+  }
 
   if (!user) {
     resetAppState();
@@ -1094,16 +988,24 @@ watchAuth(async (user) => {
     return;
   }
 
+  state.currentUser = {
+    ...state.currentUser,
+    ...user,
+    uid: user.uid || state.currentUser?.uid,
+    email: user.email || state.currentUser?.email
+  };
+
+  setScreen(true);
+
   if (els.currentUserName) {
-    els.currentUserName.textContent = `${user.fullName || ''} · ${user.accessLevel || 'standard'}`;
+    els.currentUserName.textContent = `${state.currentUser.fullName || ''} · ${state.currentUser.accessLevel || 'standard'}`;
   }
 
   if (els.storeNameSide) {
     els.storeNameSide.textContent = state.settings.storeName || 'Gestão Comercial';
   }
 
-  setScreen(true);
   bootstrapData();
   renderApp();
-  activateTab('dashboard');
+  activateTab(state.activeTab || 'dashboard');
 });

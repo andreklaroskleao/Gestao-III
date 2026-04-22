@@ -89,7 +89,7 @@ export function createUsersModule(ctx) {
   function getDefaultPermissionsByAccessLevel(accessLevel) {
     const level = String(accessLevel || 'operator');
 
-    if (level === 'admin') {
+    if (level === 'admin' || level === 'master') {
       return MODULE_OPTIONS.map((item) => item.value);
     }
 
@@ -158,11 +158,54 @@ export function createUsersModule(ctx) {
   async function refreshUsers() {
     try {
       const rows = await listUsers();
-      if (Array.isArray(rows)) state.users = rows;
+      if (Array.isArray(rows)) {
+        state.users = rows;
+      }
     } catch (error) {
       console.error(error);
     }
     render();
+  }
+
+  function buildAuditChanges(before, after) {
+    const changes = [];
+    const fields = [
+      { field: 'fullName', label: 'Nome completo' },
+      { field: 'username', label: 'Usuário' },
+      { field: 'email', label: 'E-mail' },
+      { field: 'role', label: 'Função' },
+      { field: 'area', label: 'Área' },
+      { field: 'accessLevel', label: 'Nível de acesso' },
+      { field: 'active', label: 'Status' }
+    ];
+
+    fields.forEach(({ field, label }) => {
+      const oldValue = before?.[field];
+      const newValue = after?.[field];
+
+      if (String(oldValue ?? '') !== String(newValue ?? '')) {
+        changes.push({
+          field,
+          label,
+          from: oldValue ?? '',
+          to: newValue ?? ''
+        });
+      }
+    });
+
+    const beforePermissions = Array.isArray(before?.permissions) ? before.permissions.join(', ') : '';
+    const afterPermissions = Array.isArray(after?.permissions) ? after.permissions.join(', ') : '';
+
+    if (beforePermissions !== afterPermissions) {
+      changes.push({
+        field: 'permissions',
+        label: 'Módulos liberados',
+        from: beforePermissions,
+        to: afterPermissions
+      });
+    }
+
+    return changes;
   }
 
   async function saveUser() {
@@ -181,8 +224,8 @@ export function createUsersModule(ctx) {
         fullName: String(values.fullName || '').trim(),
         username: String(values.username || values.email || '').trim(),
         email: String(values.email || '').trim(),
-        role: String(values.role || ''),
-        area: String(values.area || ''),
+        role: String(values.role || '').trim(),
+        area: String(values.area || '').trim(),
         accessLevel,
         permissions: selectedPermissions.length
           ? selectedPermissions
@@ -202,6 +245,8 @@ export function createUsersModule(ctx) {
       }
 
       if (state.editingUserId) {
+        const existing = getEditingUser();
+
         await updateManagedUser(state.currentUser, state.editingUserId, payload);
 
         await auditModule.log({
@@ -212,18 +257,14 @@ export function createUsersModule(ctx) {
           entityLabel: payload.fullName,
           description: 'Usuário atualizado.',
           metadata: {
-            changes: [
-              { field: 'role', label: 'Função', from: '', to: payload.role },
-              { field: 'area', label: 'Área', from: '', to: payload.area },
-              { field: 'accessLevel', label: 'Nível de acesso', from: '', to: payload.accessLevel },
-              { field: 'permissions', label: 'Módulos liberados', from: '', to: payload.permissions.join(', ') }
-            ]
+            changes: buildAuditChanges(existing, payload)
           }
         });
 
         showToast('Usuário atualizado.', 'success');
       } else {
         const password = String(values.password || '').trim();
+
         if (!password) {
           alert('Informe a senha do novo usuário.');
           return;
@@ -242,12 +283,7 @@ export function createUsersModule(ctx) {
           entityLabel: payload.fullName,
           description: 'Usuário cadastrado.',
           metadata: {
-            changes: [
-              { field: 'role', label: 'Função', from: '', to: payload.role },
-              { field: 'area', label: 'Área', from: '', to: payload.area },
-              { field: 'accessLevel', label: 'Nível de acesso', from: '', to: payload.accessLevel },
-              { field: 'permissions', label: 'Módulos liberados', from: '', to: payload.permissions.join(', ') }
-            ]
+            changes: buildAuditChanges(null, payload)
           }
         });
 
@@ -290,14 +326,14 @@ export function createUsersModule(ctx) {
       <div class="form-modal-body">
         <div class="section-header">
           <h2>${editing ? 'Editar usuário' : 'Novo usuário'}</h2>
-          <span class="muted">Agora com seleção múltipla de módulos.</span>
+          <span class="muted">Selecione um ou mais módulos de acesso.</span>
         </div>
 
         <form id="user-form" class="form-grid mobile-optimized">
           <div class="form-section" style="grid-column:1 / -1;">
             <div class="form-section-title">
               <h3>Dados do usuário</h3>
-              <span>Identificação e acesso</span>
+              <span>Identificação e permissões</span>
             </div>
             <div class="soft-divider"></div>
 
@@ -348,7 +384,7 @@ export function createUsersModule(ctx) {
               <div style="grid-column:1 / -1;">
                 <div class="form-section-title">
                   <h3>Módulos de acesso</h3>
-                  <span>Você pode marcar mais de um.</span>
+                  <span>Marque mais de um se necessário.</span>
                 </div>
                 ${renderPermissionsChecklist(selectedPermissions)}
               </div>

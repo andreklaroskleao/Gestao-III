@@ -1,109 +1,93 @@
-export const ROLES = [
-  "Gerente",
-  "Vendedor",
-  "Estoque",
-  "Entregador"
-];
+export const ROLES = ['Administrador', 'Gerente', 'Operador'];
 
-export const ACCESS_LEVELS = [
-  "master",
-  "admin",
-  "manager",
-  "standard"
-];
+export const ACCESS_LEVELS = ['master', 'admin', 'manager', 'operator'];
 
 export const AREAS = [
-  "dashboard",
-  "sales",
-  "products",
-  "reports",
-  "deliveries",
-  "clients",
-  "suppliers",
-  "purchases",
-  "payables",
-  "users",
-  "settings"
+  'Geral',
+  'Vendas',
+  'Estoque',
+  'Financeiro',
+  'Clientes',
+  'Fornecedores',
+  'Compras',
+  'Entregas',
+  'Relatórios',
+  'Usuários',
+  'Configurações'
 ];
 
 export const paymentMethods = [
-  "Dinheiro",
-  "PIX",
-  "Cartão",
-  "Transferência",
-  "Vale",
-  "Outro"
+  'Dinheiro',
+  'Pix',
+  'Cartão de Débito',
+  'Cartão de Crédito',
+  'Boleto',
+  'Transferência'
 ];
 
 export const deliveryStatuses = [
-  "Agendado",
-  "Em rota",
-  "Concluído",
-  "Cancelado",
-  "Reagendado",
-  "Recolhimento"
+  'Pendente',
+  'Em preparo',
+  'Saiu para entrega',
+  'Entregue',
+  'Cancelada'
 ];
 
-export function currency(value = 0) {
-  return Number(value || 0).toLocaleString("pt-BR", {
-    style: "currency",
-    currency: "BRL"
+export function currency(value) {
+  return Number(value || 0).toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL'
   });
 }
 
 export function toNumber(value) {
-  const parsed = Number(value);
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  const normalized = String(value ?? '')
+    .replace(/\./g, '')
+    .replace(',', '.')
+    .replace(/[^\d.-]/g, '');
+  const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
 export function formatDate(value) {
-  const date = value?.toDate ? value.toDate() : new Date(value || 0);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleDateString("pt-BR");
+  if (!value) return '-';
+
+  if (value?.toDate && typeof value.toDate === 'function') {
+    return value.toDate().toLocaleDateString('pt-BR');
+  }
+
+  const parsed = new Date(value);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.toLocaleDateString('pt-BR');
+  }
+
+  return String(value);
 }
 
 export function formatDateTime(value) {
-  const date = value?.toDate ? value.toDate() : new Date(value || 0);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleString("pt-BR");
+  if (!value) return '-';
+
+  if (value?.toDate && typeof value.toDate === 'function') {
+    return value.toDate().toLocaleString('pt-BR');
+  }
+
+  const parsed = new Date(value);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.toLocaleString('pt-BR');
+  }
+
+  return String(value);
 }
 
-export function formatRole(role) {
-  return role || "-";
+export function timestampFromDateTime(value) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-export function ensurePermissionsByRole(role, accessLevel = "standard") {
-  if (accessLevel === "master" || accessLevel === "admin") {
-    return [...AREAS];
-  }
-
-  if (accessLevel === "manager" || role === "Gerente") {
-    return [
-      "dashboard",
-      "sales",
-      "products",
-      "reports",
-      "deliveries",
-      "clients",
-      "suppliers",
-      "purchases",
-      "payables"
-    ];
-  }
-
-  if (role === "Vendedor") {
-    return ["sales", "products", "deliveries", "clients"];
-  }
-
-  if (role === "Estoque") {
-    return ["products", "suppliers", "purchases", "payables"];
-  }
-
-  if (role === "Entregador") {
-    return ["deliveries"];
-  }
-
-  return [];
+export function canImportBackup(user) {
+  return String(user?.accessLevel || '') === 'master';
 }
 
 export function hasPermission(user, area) {
@@ -111,68 +95,17 @@ export function hasPermission(user, area) {
     return false;
   }
 
-  if (user.accessLevel === "master" || user.accessLevel === "admin") {
+  if (user.accessLevel === 'master') {
     return true;
   }
 
-  return Array.isArray(user.permissions) && user.permissions.includes(area);
-}
-
-export function isMaster(user) {
-  return user?.accessLevel === "master";
-}
-
-export function isAdmin(user) {
-  return user?.accessLevel === "master" || user?.accessLevel === "admin";
-}
-
-export function isManager(user) {
-  return isAdmin(user) || user?.accessLevel === "manager";
-}
-
-export function canManageUsers(user) {
-  return isAdmin(user);
-}
-
-export function canImportBackup(user) {
-  return isMaster(user);
-}
-
-export function canEditTargetUser(actor, target) {
-  if (!actor || !target || actor.active === false) return false;
-  if (isMaster(actor)) return true;
-  if (actor.uid === target.uid) return false;
-  if (actor.accessLevel === "admin") {
-    return target.accessLevel !== "master";
-  }
-  return false;
-}
-
-export function canInactivateTargetUser(actor, target) {
-  if (!actor || !target || actor.active === false) return false;
-  if (actor.uid === target.uid) return false;
-  if (isMaster(actor)) return true;
-  if (actor.accessLevel === "admin") {
-    return target.accessLevel !== "master";
-  }
-  return false;
-}
-
-export function canAssignAccessLevel(actor, targetAccessLevel) {
-  if (!actor) return false;
-
-  if (isMaster(actor)) {
-    return ["master", "admin", "manager", "standard"].includes(targetAccessLevel);
+  if (Array.isArray(user.permissions) && user.permissions.length > 0) {
+    return user.permissions.includes(area);
   }
 
-  if (actor.accessLevel === "admin") {
-    return ["admin", "manager", "standard"].includes(targetAccessLevel);
+  if (user.accessLevel === 'admin') {
+    return true;
   }
 
   return false;
-}
-
-export function timestampFromDateTime(dateValue, timeValue) {
-  const dateTime = new Date(`${dateValue}T${timeValue || "00:00"}`);
-  return Number.isNaN(dateTime.getTime()) ? new Date() : dateTime;
 }

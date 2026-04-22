@@ -24,7 +24,6 @@ import { createPayablesModule } from './modules/payables.js';
 import { createPurchasesModule } from './modules/purchases.js';
 import { createCashierModule } from './modules/cashier.js';
 import { createAccountsModule } from './modules/accounts.js';
-import { createNotificationsModule } from './modules/notifications.js';
 
 import {
   login,

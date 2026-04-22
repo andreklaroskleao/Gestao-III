@@ -2299,3 +2299,38 @@ body.theme-light #tab-sales option {
   margin: 0 4px;
   font-weight: 700;
 }
+
+.permissions-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 14px;
+  margin-top: 10px;
+}
+
+.permission-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 10px 12px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 12px;
+  background: rgba(148, 163, 184, 0.06);
+}
+
+.permission-check input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+}
+
+.tag-stack {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+@media (max-width: 768px) {
+  .permissions-grid {
+    grid-template-columns: 1fr;
+  }
+}

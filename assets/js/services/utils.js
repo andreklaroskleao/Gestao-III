@@ -42,10 +42,12 @@ export function currency(value) {
 
 export function toNumber(value) {
   if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+
   const normalized = String(value ?? '')
     .replace(/\./g, '')
     .replace(',', '.')
     .replace(/[^\d.-]/g, '');
+
   const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : 0;
 }
@@ -99,13 +101,25 @@ export function hasPermission(user, area) {
     return true;
   }
 
-  if (Array.isArray(user.permissions) && user.permissions.length > 0) {
-    return user.permissions.includes(area);
+  const permissions = Array.isArray(user.permissions) ? user.permissions : [];
+
+  if (!permissions.length) {
+    return false;
   }
 
-  if (user.accessLevel === 'admin') {
-    return true;
-  }
+  return permissions.includes(area);
+}
 
+export function canAssignAccessLevel(currentUser, targetAccessLevel) {
+  const current = String(currentUser?.accessLevel || '');
+  const target = String(targetAccessLevel || '');
+
+  if (current === 'master') return true;
+  if (current === 'admin') {
+    return ['manager', 'operator'].includes(target);
+  }
   return false;
 }
+
+/* Alias para compatibilidade com auth.js caso esteja importando com esse nome */
+export const canAssignAccesLevel = canAssignAccessLevel;

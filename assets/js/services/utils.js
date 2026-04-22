@@ -33,6 +33,20 @@ export const deliveryStatuses = [
   'Cancelada'
 ];
 
+const MODULE_OPTIONS = [
+  'dashboard',
+  'sales',
+  'products',
+  'reports',
+  'deliveries',
+  'clients',
+  'suppliers',
+  'purchases',
+  'payables',
+  'users',
+  'settings'
+];
+
 export function currency(value) {
   return Number(value || 0).toLocaleString('pt-BR', {
     style: 'currency',
@@ -41,7 +55,9 @@ export function currency(value) {
 }
 
 export function toNumber(value) {
-  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : 0;
+  }
 
   const normalized = String(value ?? '')
     .replace(/\./g, '')
@@ -92,34 +108,115 @@ export function canImportBackup(user) {
   return String(user?.accessLevel || '') === 'master';
 }
 
+export function isAdmin(user) {
+  const level = String(user?.accessLevel || '');
+  return user?.active !== false && user?.deleted !== true && (level === 'master' || level === 'admin');
+}
+
+export function canAssignAccessLevel(currentUser, targetAccessLevel) {
+  const actorLevel = String(currentUser?.accessLevel || '');
+  const targetLevel = String(targetAccessLevel || '');
+
+  if (actorLevel === 'master') {
+    return true;
+  }
+
+  if (actorLevel === 'admin') {
+    return ['manager', 'operator'].includes(targetLevel);
+  }
+
+  return false;
+}
+
+export function canEditTargetUser(currentUser, targetUser) {
+  const actorLevel = String(currentUser?.accessLevel || '');
+  const targetLevel = String(targetUser?.accessLevel || '');
+
+  if (actorLevel === 'master') {
+    return true;
+  }
+
+  if (actorLevel === 'admin') {
+    return targetLevel !== 'master' && targetLevel !== 'admin';
+  }
+
+  return false;
+}
+
+export function canInactivateTargetUser(currentUser, targetUser) {
+  return canEditTargetUser(currentUser, targetUser);
+}
+
+export function ensurePermissionsByRole(role, accessLevel) {
+  const normalizedLevel = String(accessLevel || 'operator');
+  const normalizedRole = String(role || '').toLowerCase();
+
+  if (normalizedLevel === 'master') {
+    return [...MODULE_OPTIONS];
+  }
+
+  if (normalizedLevel === 'admin') {
+    return [
+      'dashboard',
+      'sales',
+      'products',
+      'reports',
+      'deliveries',
+      'clients',
+      'suppliers',
+      'purchases',
+      'payables',
+      'users',
+      'settings'
+    ];
+  }
+
+  if (normalizedLevel === 'manager') {
+    return [
+      'dashboard',
+      'sales',
+      'products',
+      'reports',
+      'deliveries',
+      'clients',
+      'suppliers',
+      'purchases',
+      'payables',
+      'settings'
+    ];
+  }
+
+  if (normalizedRole.includes('finance')) {
+    return ['dashboard', 'reports', 'clients', 'payables'];
+  }
+
+  if (normalizedRole.includes('estoque')) {
+    return ['dashboard', 'products', 'suppliers', 'purchases'];
+  }
+
+  return ['dashboard', 'sales', 'products', 'deliveries', 'clients'];
+}
+
 export function hasPermission(user, area) {
   if (!user || user.active === false || user.deleted === true) {
     return false;
   }
 
-  if (user.accessLevel === 'master') {
+  const level = String(user.accessLevel || '');
+
+  if (level === 'master') {
     return true;
   }
 
   const permissions = Array.isArray(user.permissions) ? user.permissions : [];
 
-  if (!permissions.length) {
-    return false;
+  if (permissions.length > 0) {
+    return permissions.includes(area);
   }
 
-  return permissions.includes(area);
-}
-
-export function canAssignAccessLevel(currentUser, targetAccessLevel) {
-  const current = String(currentUser?.accessLevel || '');
-  const target = String(targetAccessLevel || '');
-
-  if (current === 'master') return true;
-  if (current === 'admin') {
-    return ['manager', 'operator'].includes(target);
+  if (level === 'admin') {
+    return true;
   }
+
   return false;
 }
-
-/* Alias para compatibilidade com auth.js caso esteja importando com esse nome */
-export const canAssignAccesLevel = canAssignAccessLevel;

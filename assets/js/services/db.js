@@ -25,7 +25,8 @@ export const refs = {
   suppliers: collection(db, "suppliers"),
   accountsPayable: collection(db, "accounts_payable"),
   purchaseOrders: collection(db, "purchase_orders"),
-  purchases: collection(db, "purchases")
+  purchases: collection(db, "purchases"),
+  notifications: collection(db,"notifications")
 };
 
 export async function createDoc(collectionRef, payload) {

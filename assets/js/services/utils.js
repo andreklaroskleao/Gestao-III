@@ -202,21 +202,10 @@ export function hasPermission(user, area) {
     return false;
   }
 
-  const level = String(user.accessLevel || '');
-
-  if (level === 'master') {
+  if (String(user.accessLevel || '') === 'master') {
     return true;
   }
 
   const permissions = Array.isArray(user.permissions) ? user.permissions : [];
-
-  if (permissions.length > 0) {
-    return permissions.includes(area);
-  }
-
-  if (level === 'admin') {
-    return true;
-  }
-
-  return false;
+  return permissions.includes(area);
 }

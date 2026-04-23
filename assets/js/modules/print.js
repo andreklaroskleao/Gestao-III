@@ -2,7 +2,7 @@ import { showToast } from './ui.js';
 
 export function createPrintModule(ctx) {
   const { state } = ctx;
-  const UNIDENTIFIED_CUSTOMER = 'CLIENTE NÃO IDENTIFICADO';
+  const UNIDENTIFIED_CUSTOMER = 'Cliente não identificado';
 
   function escapeHtml(value = '') {
     return String(value).replace(/[&<>'"]/g, (char) => ({
@@ -29,10 +29,6 @@ export function createPrintModule(ctx) {
     });
   }
 
-  function formatMoneyPlain(value) {
-    return Number(value || 0).toFixed(2).replace('.', ',');
-  }
-
   function formatAnyDateTime(value) {
     if (!value) return '';
 
@@ -56,6 +52,7 @@ export function createPrintModule(ctx) {
     if (typeof value === 'object' && value.seconds != null) {
       const parsed = new Date(Number(value.seconds) * 1000);
       if (!Number.isNaN(parsed.getTime())) return parsed.toLocaleString('pt-BR');
+      return '';
     }
 
     const parsed = new Date(value);
@@ -65,198 +62,61 @@ export function createPrintModule(ctx) {
 
   function normalizeCustomerName(value) {
     const name = String(value || '').trim();
-    return (name || UNIDENTIFIED_CUSTOMER).toUpperCase();
+    return name || UNIDENTIFIED_CUSTOMER;
   }
 
   function normalizeCustomerCpf(value) {
     const cpf = String(value || '').trim();
-    return (cpf || 'NÃO INFORMADO').toUpperCase();
+    return cpf || 'Não informado';
   }
 
-  function repeatChar(char, count) {
-    return new Array(Math.max(0, count) + 1).join(char);
+  function normalizeUpper(value) {
+    return String(value || '').trim().toUpperCase();
   }
 
-  function padRight(value, length) {
-    const text = String(value ?? '');
-    if (text.length >= length) return text.slice(0, length);
-    return text + repeatChar(' ', length - text.length);
-  }
+  function buildItemsHtml(sale, options = {}) {
+    const items = Array.isArray(sale.items) ? sale.items : [];
+    const is58mm = Boolean(options.is58mm);
 
-  function padLeft(value, length) {
-    const text = String(value ?? '');
-    if (text.length >= length) return text.slice(0, length);
-    return repeatChar(' ', length - text.length) + text;
-  }
-
-  function centerText(value, width) {
-    const text = String(value ?? '');
-    if (text.length >= width) return text.slice(0, width);
-    const totalSpaces = width - text.length;
-    const left = Math.floor(totalSpaces / 2);
-    const right = totalSpaces - left;
-    return repeatChar(' ', left) + text + repeatChar(' ', right);
-  }
-
-  function wrapText(text, width) {
-    const raw = String(text || '').trim();
-    if (!raw) return [''];
-
-    const words = raw.split(/\s+/);
-    const lines = [];
-    let current = '';
-
-    for (const word of words) {
-      if (!current) {
-        if (word.length <= width) {
-          current = word;
-        } else {
-          let rest = word;
-          while (rest.length > width) {
-            lines.push(rest.slice(0, width));
-            rest = rest.slice(width);
-          }
-          current = rest;
-        }
-        continue;
-      }
-
-      const candidate = `${current} ${word}`;
-      if (candidate.length <= width) {
-        current = candidate;
-      } else {
-        lines.push(current);
-        if (word.length <= width) {
-          current = word;
-        } else {
-          let rest = word;
-          while (rest.length > width) {
-            lines.push(rest.slice(0, width));
-            rest = rest.slice(width);
-          }
-          current = rest;
-        }
-      }
-    }
-
-    if (current) lines.push(current);
-    return lines.length ? lines : [''];
-  }
-
-  function buildKeyValueLines(label, value, width, labelWidth = 12) {
-    const safeLabel = `${String(label || '').trim().toUpperCase()}:`;
-    const left = padRight(safeLabel, labelWidth);
-    const rightWidth = Math.max(1, width - labelWidth);
-    const wrapped = wrapText(String(value || '-').toUpperCase(), rightWidth);
-
-    return wrapped.map((line, index) => {
-      if (index === 0) return left + padRight(line, rightWidth);
-      return repeatChar(' ', labelWidth) + padRight(line, rightWidth);
-    });
-  }
-
-  function buildItemsText(items = [], width, is58mm) {
     if (!items.length) {
-      return centerText('SEM ITENS LANCADOS.', width);
+      return `<div class="empty-items">SEM ITENS LANÇADOS</div>`;
     }
 
-    const qtyWidth = is58mm ? 3 : 4;
-    const unitWidth = is58mm ? 8 : 10;
-    const totalWidth = is58mm ? 9 : 11;
-    const spacesBetween = 3;
-    const productWidth = width - qtyWidth - unitWidth - totalWidth - spacesBetween;
+    return `
+      <div class="items-list">
+        <div class="items-columns-header">
+          <div class="col-qty">QTD</div>
+          <div class="col-unit">UNIT.</div>
+          <div class="col-total">TOTAL</div>
+        </div>
 
-    const header =
-      padRight('PRODUTO', productWidth) +
-      ' ' +
-      padLeft('QTD', qtyWidth) +
-      ' ' +
-      padLeft('UNIT.', unitWidth) +
-      ' ' +
-      padLeft('TOTAL', totalWidth);
-
-    const divider = repeatChar('-', width);
-
-    const body = items.flatMap((item) => {
-      const productLines = wrapText(String(item.name || '-').toUpperCase(), productWidth);
-      const qty = padLeft(Number(item.quantity || 0), qtyWidth);
-      const unit = padLeft(formatMoneyPlain(item.unitPrice || 0), unitWidth);
-      const total = padLeft(formatMoneyPlain(item.total || 0), totalWidth);
-
-      return productLines.map((line, index) => {
-        if (index === 0) {
-          return (
-            padRight(line, productWidth) +
-            ' ' +
-            qty +
-            ' ' +
-            unit +
-            ' ' +
-            total
-          );
-        }
-
-        return (
-          padRight(line, productWidth) +
-          ' ' +
-          padLeft('', qtyWidth) +
-          ' ' +
-          padLeft('', unitWidth) +
-          ' ' +
-          padLeft('', totalWidth)
-        );
-      });
-    });
-
-    return [header, divider, ...body].join('\n');
-  }
-
-  function buildTotalsText(sale, width) {
-    function line(label, value) {
-      const rawValue = formatMoney(value);
-      const labelPart = String(label || '').trim().toUpperCase();
-      const valueWidth = rawValue.length;
-      const leftWidth = Math.max(1, width - valueWidth - 1);
-      return padRight(labelPart, leftWidth) + ' ' + rawValue;
-    }
-
-    return [
-      line('Subtotal', sale.subtotal || 0),
-      line('Desconto', sale.discount || 0),
-      repeatChar('-', width),
-      line('TOTAL', sale.total || 0),
-      repeatChar('-', width),
-      line('Valor pago', sale.amountPaid || 0),
-      line('Troco', sale.change || 0)
-    ].join('\n');
-  }
-
-  function buildSectionCentered(title, text, width) {
-    const clean = String(text || '').trim().toUpperCase();
-    if (!clean) return '';
-
-    return [
-      repeatChar('-', width),
-      centerText(String(title || '').toUpperCase(), width),
-      repeatChar('-', width),
-      ...wrapText(clean, width).map((line) => centerText(line, width))
-    ].join('\n');
+        ${items.map((item) => `
+          <div class="receipt-item">
+            <div class="item-name">${escapeHtml(normalizeUpper(item.name || '-'))}</div>
+            <div class="item-values-row">
+              <div class="col-qty">${Number(item.quantity || 0)}</div>
+              <div class="col-unit">${escapeHtml(formatMoney(item.unitPrice || 0))}</div>
+              <div class="col-total">${escapeHtml(formatMoney(item.total || 0))}</div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `;
   }
 
   function buildReceiptHtml(sale = {}) {
     const { thermalWidth, compactMode } = getPrintSettings();
     const is58mm = thermalWidth === '58mm';
 
-    const widthPx = is58mm ? 230 : 320;
-    const charsPerLine = is58mm ? 32 : 42;
-    const bodyFontSize = compactMode ? (is58mm ? 10 : 11) : (is58mm ? 11 : 12);
-    const headerFontSize = compactMode ? (is58mm ? 12 : 13) : (is58mm ? 13 : 15);
-    const storeFontSize = compactMode ? (is58mm ? 14 : 16) : (is58mm ? 16 : 18);
-    const padding = is58mm ? 8 : 10;
+    const widthPx = is58mm ? 240 : 340;
+    const padding = is58mm ? 10 : 12;
+    const baseFontSize = compactMode ? (is58mm ? 10 : 11) : (is58mm ? 11 : 12);
+    const headerFontSize = compactMode ? (is58mm ? 13 : 14) : (is58mm ? 15 : 17);
+    const titleFontSize = compactMode ? (is58mm ? 15 : 17) : (is58mm ? 17 : 20);
 
-    const storeName = String(state.settings?.storeName || 'Gestão III').trim().toUpperCase();
-    const address = String(state.settings?.address || '').trim().toUpperCase();
-    const phone = String(state.settings?.phone || state.settings?.storePhone || '').trim().toUpperCase();
+    const storeName = normalizeUpper(state.settings?.storeName || 'Gestão III');
+    const address = normalizeUpper(state.settings?.address || '');
+    const phone = String(state.settings?.phone || state.settings?.storePhone || '').trim();
     const warrantyText = String(state.settings?.warrantyText || '').trim();
 
     const saleDateTime =
@@ -267,35 +127,6 @@ export function createPrintModule(ctx) {
     const customerName = normalizeCustomerName(sale.customerName);
     const customerCpf = normalizeCustomerCpf(sale.customerCpf);
 
-    const separator = repeatChar('-', charsPerLine);
-
-    const headerText = [
-      ...(storeName ? [centerText(storeName, charsPerLine)] : []),
-      ...(address ? wrapText(address, charsPerLine).map((line) => centerText(line, charsPerLine)) : []),
-      ...(phone ? wrapText(`TELEFONE: ${phone}`, charsPerLine).map((line) => centerText(line, charsPerLine)) : []),
-      centerText('CUPOM NAO FISCAL', charsPerLine)
-    ].join('\n');
-
-    const bodyText = [
-      separator,
-      ...buildKeyValueLines('Data/Hora', saleDateTime, charsPerLine, 12),
-      ...buildKeyValueLines('Cliente', customerName, charsPerLine, 12),
-      ...buildKeyValueLines('CPF', customerCpf, charsPerLine, 12),
-      ...buildKeyValueLines('Pagamento', sale.paymentMethod || '-', charsPerLine, 12),
-      separator,
-      centerText('ITENS', charsPerLine),
-      separator,
-      buildItemsText(Array.isArray(sale.items) ? sale.items : [], charsPerLine, is58mm),
-      separator,
-      buildTotalsText(sale, charsPerLine),
-      warrantyText ? buildSectionCentered('GARANTIA', warrantyText, charsPerLine) : '',
-      sale.notes ? buildSectionCentered('OBSERVACOES', sale.notes, charsPerLine) : '',
-      separator,
-      centerText('OBRIGADO PELA PREFERENCIA!', charsPerLine)
-    ]
-      .filter(Boolean)
-      .join('\n');
-
     return `
       <!doctype html>
       <html lang="pt-BR">
@@ -303,6 +134,13 @@ export function createPrintModule(ctx) {
           <meta charset="utf-8" />
           <title>Cupom não fiscal</title>
           <style>
+            :root {
+              --text: #111111;
+              --muted: #4f4f4f;
+              --line: #111111;
+              --bg: #ffffff;
+            }
+
             * {
               box-sizing: border-box;
               -webkit-print-color-adjust: exact;
@@ -312,8 +150,8 @@ export function createPrintModule(ctx) {
             html, body {
               margin: 0;
               padding: 0;
-              background: #ffffff;
-              color: #111111;
+              background: var(--bg);
+              color: var(--text);
               font-family: "Courier New", Courier, monospace;
             }
 
@@ -328,37 +166,184 @@ export function createPrintModule(ctx) {
               width: 100%;
               max-width: ${widthPx}px;
               padding: ${padding}px;
-            }
-
-            .receipt-header,
-            .receipt-body {
-              margin: 0;
-              white-space: pre-wrap;
-              word-break: break-word;
-              font-family: "Courier New", Courier, monospace;
+              font-size: ${baseFontSize}px;
+              line-height: 1.35;
               font-variant-numeric: tabular-nums;
               font-feature-settings: "tnum" 1;
             }
 
-            .receipt-header {
-              font-size: ${headerFontSize}px;
-              line-height: 1.32;
+            .center {
               text-align: center;
-              font-weight: 700;
-              margin-bottom: 6px;
             }
 
-            .store-name-line {
-              font-size: ${storeFontSize}px;
-              line-height: 1.2;
+            .store-name {
+              font-size: ${titleFontSize}px;
               font-weight: 900;
+              text-transform: uppercase;
+              letter-spacing: 0.4px;
+              line-height: 1.2;
+            }
+
+            .store-meta {
+              margin-top: 3px;
+              font-size: ${headerFontSize}px;
+              font-weight: 700;
+              text-transform: uppercase;
+              word-break: break-word;
+            }
+
+            .receipt-title {
+              margin-top: 10px;
+              font-size: ${headerFontSize + 1}px;
+              font-weight: 900;
+              text-transform: uppercase;
               letter-spacing: 0.4px;
             }
 
-            .receipt-body {
-              font-size: ${bodyFontSize}px;
-              line-height: 1.38;
+            .line {
+              border-top: 1px solid var(--line);
+              margin: 10px 0;
+            }
+
+            .line.dashed {
+              border-top-style: dashed;
+            }
+
+            .info-block {
+              text-align: center;
+            }
+
+            .info-line {
+              margin: 4px 0;
+              text-transform: uppercase;
               font-weight: 700;
+              word-break: break-word;
+            }
+
+            .section-title {
+              text-align: center;
+              font-weight: 900;
+              text-transform: uppercase;
+              margin: 4px 0 8px;
+            }
+
+            .items-list {
+              width: 100%;
+            }
+
+            .items-columns-header {
+              display: grid;
+              grid-template-columns: 0.7fr 1.2fr 1.2fr;
+              column-gap: 8px;
+              align-items: center;
+              text-transform: uppercase;
+              font-weight: 900;
+              border-top: 1px solid var(--line);
+              border-bottom: 1px solid var(--line);
+              padding: 6px 0;
+              margin-bottom: 6px;
+            }
+
+            .receipt-item {
+              padding: 6px 0;
+              border-bottom: 1px dotted #777777;
+            }
+
+            .receipt-item:last-child {
+              border-bottom: none;
+            }
+
+            .item-name {
+              text-transform: uppercase;
+              font-weight: 700;
+              text-align: left;
+              word-break: break-word;
+              overflow-wrap: anywhere;
+              margin-bottom: 5px;
+            }
+
+            .item-values-row {
+              display: grid;
+              grid-template-columns: 0.7fr 1.2fr 1.2fr;
+              column-gap: 8px;
+              align-items: center;
+            }
+
+            .col-qty,
+            .col-unit,
+            .col-total {
+              text-align: right;
+              white-space: nowrap;
+              font-weight: 700;
+            }
+
+            .empty-items {
+              text-align: center;
+              text-transform: uppercase;
+              color: var(--muted);
+              padding: 8px 0;
+              border-top: 1px solid var(--line);
+              border-bottom: 1px solid var(--line);
+            }
+
+            .totals-table {
+              width: 100%;
+              border-collapse: collapse;
+              table-layout: fixed;
+            }
+
+            .totals-table td {
+              padding: 3px 0;
+              vertical-align: top;
+            }
+
+            .totals-table td.label {
+              width: 65%;
+              text-transform: uppercase;
+              font-weight: 700;
+            }
+
+            .totals-table td.value {
+              width: 35%;
+              text-align: right;
+              white-space: nowrap;
+              font-weight: 700;
+            }
+
+            .totals-table tr.total-row td {
+              border-top: 1px solid var(--line);
+              border-bottom: 1px solid var(--line);
+              padding-top: 6px;
+              padding-bottom: 6px;
+              font-size: ${baseFontSize + 1}px;
+              font-weight: 900;
+            }
+
+            .warranty-block,
+            .notes-block {
+              text-align: center;
+            }
+
+            .warranty-title,
+            .notes-title {
+              font-weight: 900;
+              text-transform: uppercase;
+              margin-bottom: 6px;
+            }
+
+            .warranty-text,
+            .notes-text {
+              text-transform: uppercase;
+              white-space: pre-wrap;
+              word-break: break-word;
+              line-height: 1.45;
+            }
+
+            .footer-message {
+              text-align: center;
+              text-transform: uppercase;
+              font-weight: 900;
+              margin-top: 4px;
             }
 
             @page {
@@ -387,8 +372,71 @@ export function createPrintModule(ctx) {
         </head>
         <body>
           <div class="receipt">
-            <pre class="receipt-header">${escapeHtml(headerText)}</pre>
-            <pre class="receipt-body">${escapeHtml(bodyText)}</pre>
+            <div class="center">
+              <div class="store-name">${escapeHtml(storeName)}</div>
+              ${address ? `<div class="store-meta">${escapeHtml(address)}</div>` : ''}
+              ${phone ? `<div class="store-meta">TELEFONE: ${escapeHtml(phone)}</div>` : ''}
+              <div class="receipt-title">CUPOM NÃO FISCAL</div>
+            </div>
+
+            <div class="line"></div>
+
+            <div class="info-block">
+              <div class="info-line">DATA/HORA: ${escapeHtml(normalizeUpper(saleDateTime))}</div>
+              <div class="info-line">CLIENTE: ${escapeHtml(normalizeUpper(customerName))}</div>
+              <div class="info-line">CPF: ${escapeHtml(normalizeUpper(customerCpf))}</div>
+              <div class="info-line">PAGAMENTO: ${escapeHtml(normalizeUpper(sale.paymentMethod || '-'))}</div>
+            </div>
+
+            <div class="line dashed"></div>
+
+            <div class="section-title">ITENS</div>
+
+            ${buildItemsHtml(sale, { is58mm })}
+
+            <div class="line dashed"></div>
+
+            <table class="totals-table">
+              <tr>
+                <td class="label">SUBTOTAL</td>
+                <td class="value">${escapeHtml(formatMoney(sale.subtotal || 0))}</td>
+              </tr>
+              <tr>
+                <td class="label">DESCONTO</td>
+                <td class="value">${escapeHtml(formatMoney(sale.discount || 0))}</td>
+              </tr>
+              <tr class="total-row">
+                <td class="label">TOTAL</td>
+                <td class="value">${escapeHtml(formatMoney(sale.total || 0))}</td>
+              </tr>
+              <tr>
+                <td class="label">VALOR PAGO</td>
+                <td class="value">${escapeHtml(formatMoney(sale.amountPaid || 0))}</td>
+              </tr>
+              <tr>
+                <td class="label">TROCO</td>
+                <td class="value">${escapeHtml(formatMoney(sale.change || 0))}</td>
+              </tr>
+            </table>
+
+            ${warrantyText ? `
+              <div class="line dashed"></div>
+              <div class="warranty-block">
+                <div class="warranty-title">GARANTIA</div>
+                <div class="warranty-text">${escapeHtml(normalizeUpper(warrantyText))}</div>
+              </div>
+            ` : ''}
+
+            ${sale.notes ? `
+              <div class="line dashed"></div>
+              <div class="notes-block">
+                <div class="notes-title">OBSERVAÇÕES</div>
+                <div class="notes-text">${escapeHtml(normalizeUpper(sale.notes))}</div>
+              </div>
+            ` : ''}
+
+            <div class="line"></div>
+            <div class="footer-message">OBRIGADO PELA PREFERÊNCIA!</div>
           </div>
         </body>
       </html>

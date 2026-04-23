@@ -59,14 +59,26 @@ export function createPrintModule(ctx) {
     return '';
   }
 
-  function truncateText(text, max = 30) {
+  function normalizeCustomerName(value) {
+    const name = String(value || '').trim();
+    return name || UNIDENTIFIED_CUSTOMER;
+  }
+
+  function normalizeCustomerCpf(value) {
+    const cpf = String(value || '').trim();
+    return cpf || 'Não informado';
+  }
+
+  function truncateText(text, max = 34) {
     const value = String(text || '').trim();
     if (value.length <= max) return value;
     return `${value.slice(0, max - 1)}…`;
   }
 
-  function buildItemsTableHtml(sale) {
+  function buildItemsTableHtml(sale, options = {}) {
     const items = Array.isArray(sale.items) ? sale.items : [];
+    const compactMode = Boolean(options.compactMode);
+    const nameLimit = compactMode ? 22 : 30;
 
     if (!items.length) {
       return `
@@ -78,19 +90,21 @@ export function createPrintModule(ctx) {
       <table class="items-table">
         <thead>
           <tr>
-            <th>Produto</th>
-            <th>QTD</th>
-            <th>VALOR</th>
-            <th>TOTAL</th>
+            <th class="col-product">Produto</th>
+            <th class="col-qty">Qtd</th>
+            <th class="col-price">Unit.</th>
+            <th class="col-total">Total</th>
           </tr>
         </thead>
         <tbody>
           ${items.map((item) => `
             <tr>
-              <td>${escapeHtml(truncateText(item.name || '-', 30))}</td>
-              <td>${Number(item.quantity || 0)}</td>
-              <td>${escapeHtml(formatMoney(item.unitPrice || 0))}</td>
-              <td>${escapeHtml(formatMoney(item.total || 0))}</td>
+              <td class="col-product">
+                <div class="product-name">${escapeHtml(truncateText(item.name || '-', nameLimit))}</div>
+              </td>
+              <td class="col-qty">${Number(item.quantity || 0)}</td>
+              <td class="col-price">${escapeHtml(formatMoney(item.unitPrice || 0))}</td>
+              <td class="col-total">${escapeHtml(formatMoney(item.total || 0))}</td>
             </tr>
           `).join('')}
         </tbody>
@@ -99,9 +113,15 @@ export function createPrintModule(ctx) {
   }
 
   function buildReceiptHtml(sale = {}) {
-    const settings = getPrintSettings();
-    const compactMode = Boolean(settings.compactMode);
-    const widthPx = settings.thermalWidth === '58mm' ? 220 : 300;
+    const { thermalWidth, compactMode } = getPrintSettings();
+    const is58mm = thermalWidth === '58mm';
+
+    const widthPx = is58mm ? 210 : 290;
+    const horizontalPadding = is58mm ? 8 : 10;
+    const baseFontSize = compactMode ? (is58mm ? 10 : 11) : (is58mm ? 11 : 12);
+    const titleFontSize = is58mm ? 15 : 17;
+    const storeFontSize = is58mm ? 14 : 16;
+    const productMaxLines = is58mm ? 2 : 2;
 
     const storeName = state.settings?.storeName || 'Gestão III';
     const address = state.settings?.address || '';
@@ -111,10 +131,10 @@ export function createPrintModule(ctx) {
     const saleDateTime =
       String(sale.saleDateTimeLabel || '').trim() ||
       formatAnyDateTime(sale.createdAt) ||
-      '';
+      '-';
 
-    const customerName = String(sale.customerName || '').trim() || UNIDENTIFIED_CUSTOMER;
-    const customerCpf = String(sale.customerCpf || '').trim() || 'Não informado';
+    const customerName = normalizeCustomerName(sale.customerName);
+    const customerCpf = normalizeCustomerCpf(sale.customerCpf);
 
     return `
       <!doctype html>
@@ -124,36 +144,41 @@ export function createPrintModule(ctx) {
           <title>Cupom não fiscal</title>
           <style>
             :root {
-              --text: #111;
-              --muted: #444;
-              --line: #000;
+              --text: #111111;
+              --muted: #4b4b4b;
+              --line: #111111;
+              --bg: #ffffff;
             }
 
             * {
               box-sizing: border-box;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
             }
 
             html, body {
               margin: 0;
               padding: 0;
-              background: #fff;
+              background: var(--bg);
               color: var(--text);
               font-family: "Courier New", Courier, monospace;
             }
 
             body {
-              width: 100%;
               display: flex;
               justify-content: center;
-              padding: 8px;
+              align-items: flex-start;
+              padding: 6px;
+              width: 100%;
             }
 
             .receipt {
               width: 100%;
               max-width: ${widthPx}px;
-              padding: ${compactMode ? '8px' : '12px'};
-              font-size: ${compactMode ? '11px' : '12px'};
-              line-height: 1.4;
+              padding: ${horizontalPadding}px;
+              font-size: ${baseFontSize}px;
+              line-height: 1.35;
+              color: var(--text);
             }
 
             .center {
@@ -161,66 +186,120 @@ export function createPrintModule(ctx) {
             }
 
             .store-name {
+              font-size: ${storeFontSize}px;
               font-weight: 700;
-              font-size: ${compactMode ? '14px' : '16px'};
+              letter-spacing: 0.2px;
+              text-transform: uppercase;
             }
 
             .store-meta {
               margin-top: 2px;
               color: var(--muted);
+              word-break: break-word;
             }
 
             .receipt-title {
               margin-top: 8px;
+              font-size: ${titleFontSize}px;
               font-weight: 700;
               text-transform: uppercase;
+              letter-spacing: 0.4px;
             }
 
-            .divider {
-              border-top: 1px dashed var(--line);
+            .section-line {
+              border-top: 1px solid var(--line);
               margin: 8px 0;
             }
 
-            .meta-grid {
-              display: grid;
-              gap: 4px;
+            .section-line.dashed {
+              border-top-style: dashed;
             }
 
-            .meta-line {
-              display: grid;
-              grid-template-columns: 84px 1fr;
-              gap: 8px;
-              align-items: start;
+            .info-table,
+            .totals-table {
+              width: 100%;
+              border-collapse: collapse;
             }
 
-            .meta-line .label {
+            .info-table td,
+            .totals-table td {
+              padding: 2px 0;
+              vertical-align: top;
+            }
+
+            .info-table td.label {
+              width: 78px;
               font-weight: 700;
+              white-space: nowrap;
+              padding-right: 6px;
             }
 
-            .meta-line .value {
+            .info-table td.value {
               word-break: break-word;
+            }
+
+            .items-title {
+              font-weight: 700;
+              text-transform: uppercase;
+              margin-bottom: 4px;
             }
 
             .items-table {
               width: 100%;
               border-collapse: collapse;
+              table-layout: fixed;
+              border-top: 1px solid var(--line);
+              border-bottom: 1px solid var(--line);
             }
 
-            .items-table th,
-            .items-table td {
+            .items-table thead th {
+              font-weight: 700;
+              text-transform: uppercase;
+              border-bottom: 1px solid var(--line);
+              padding: 4px 0 4px 0;
+            }
+
+            .items-table tbody td {
+              padding: 4px 0;
+              border-bottom: 1px dotted #777;
+            }
+
+            .items-table tbody tr:last-child td {
+              border-bottom: none;
+            }
+
+            .items-table .col-product {
+              width: ${is58mm ? '42%' : '44%'};
               text-align: left;
-              padding: 3px 0;
-              vertical-align: top;
+              padding-right: 4px;
             }
 
-            .items-table th:nth-child(2),
-            .items-table th:nth-child(3),
-            .items-table th:nth-child(4),
-            .items-table td:nth-child(2),
-            .items-table td:nth-child(3),
-            .items-table td:nth-child(4) {
+            .items-table .col-qty {
+              width: ${is58mm ? '10%' : '10%'};
               text-align: right;
               white-space: nowrap;
+              padding-right: 4px;
+            }
+
+            .items-table .col-price {
+              width: ${is58mm ? '22%' : '22%'};
+              text-align: right;
+              white-space: nowrap;
+              padding-right: 4px;
+            }
+
+            .items-table .col-total {
+              width: ${is58mm ? '26%' : '24%'};
+              text-align: right;
+              white-space: nowrap;
+            }
+
+            .product-name {
+              display: -webkit-box;
+              -webkit-line-clamp: ${productMaxLines};
+              -webkit-box-orient: vertical;
+              overflow: hidden;
+              word-break: break-word;
             }
 
             .empty-items {
@@ -229,40 +308,68 @@ export function createPrintModule(ctx) {
               padding: 8px 0;
             }
 
-            .totals {
-              margin-top: 8px;
-            }
-
-            .totals .line {
-              display: grid;
-              grid-template-columns: 1fr auto;
-              gap: 10px;
-              margin: 3px 0;
-              align-items: center;
-            }
-
-            .totals .line.total {
+            .totals-table td.label {
               font-weight: 700;
-              font-size: ${compactMode ? '12px' : '13px'};
+              padding-right: 8px;
             }
 
-            .footer {
-              margin-top: 8px;
-              color: var(--muted);
+            .totals-table td.value {
+              text-align: right;
+              white-space: nowrap;
+            }
+
+            .totals-table tr.total td {
+              font-size: ${is58mm ? 12 : 13}px;
+              font-weight: 700;
+              border-top: 1px solid var(--line);
+              border-bottom: 1px solid var(--line);
+              padding-top: 5px;
+              padding-bottom: 5px;
+            }
+
+            .notes-block,
+            .footer-block {
               white-space: pre-wrap;
               word-break: break-word;
+            }
+
+            .notes-title,
+            .footer-title {
+              font-weight: 700;
+              margin-bottom: 3px;
+            }
+
+            .footer-message {
               text-align: center;
+              margin-top: 6px;
+              font-weight: 700;
+            }
+
+            .muted {
+              color: var(--muted);
+            }
+
+            @page {
+              margin: 0;
+              size: auto;
             }
 
             @media print {
-              body {
+              html, body {
+                width: auto;
+                margin: 0;
                 padding: 0;
+                background: #fff;
+              }
+
+              body {
+                display: block;
               }
 
               .receipt {
-                max-width: 100%;
+                max-width: none;
                 width: 100%;
-                padding: 0;
+                padding: ${horizontalPadding}px;
               }
             }
           </style>
@@ -276,76 +383,75 @@ export function createPrintModule(ctx) {
               <div class="receipt-title">Cupom não fiscal</div>
             </div>
 
-            <div class="divider"></div>
+            <div class="section-line"></div>
 
-            <div class="meta-grid">
-              <div class="meta-line">
-                <span class="label">Data/Hora:</span>
-                <span class="value">${escapeHtml(saleDateTime || '-')}</span>
-              </div>
+            <table class="info-table">
+              <tr>
+                <td class="label">Data/Hora:</td>
+                <td class="value">${escapeHtml(saleDateTime)}</td>
+              </tr>
+              <tr>
+                <td class="label">Cliente:</td>
+                <td class="value">${escapeHtml(customerName)}</td>
+              </tr>
+              <tr>
+                <td class="label">CPF:</td>
+                <td class="value">${escapeHtml(customerCpf)}</td>
+              </tr>
+              <tr>
+                <td class="label">Pagamento:</td>
+                <td class="value">${escapeHtml(sale.paymentMethod || '-')}</td>
+              </tr>
+            </table>
 
-              <div class="meta-line">
-                <span class="label">Cliente:</span>
-                <span class="value">${escapeHtml(customerName)}</span>
-              </div>
+            <div class="section-line dashed"></div>
 
-              <div class="meta-line">
-                <span class="label">CPF:</span>
-                <span class="value">${escapeHtml(customerCpf)}</span>
-              </div>
+            <div class="items-title">Itens</div>
+            ${buildItemsTableHtml(sale, { compactMode })}
 
-              <div class="meta-line">
-                <span class="label">Pagamento:</span>
-                <span class="value">${escapeHtml(sale.paymentMethod || '-')}</span>
-              </div>
-            </div>
+            <div class="section-line dashed"></div>
 
-            <div class="divider"></div>
-
-            ${buildItemsTableHtml(sale)}
-
-            <div class="divider"></div>
-
-            <div class="totals">
-              <div class="line">
-                <span>Subtotal</span>
-                <strong>${escapeHtml(formatMoney(sale.subtotal || 0))}</strong>
-              </div>
-
-              <div class="line">
-                <span>Desconto</span>
-                <strong>${escapeHtml(formatMoney(sale.discount || 0))}</strong>
-              </div>
-
-              <div class="line total">
-                <span>Total</span>
-                <strong>${escapeHtml(formatMoney(sale.total || 0))}</strong>
-              </div>
-
-              <div class="line">
-                <span>Valor pago</span>
-                <strong>${escapeHtml(formatMoney(sale.amountPaid || 0))}</strong>
-              </div>
-
-              <div class="line">
-                <span>Troco</span>
-                <strong>${escapeHtml(formatMoney(sale.change || 0))}</strong>
-              </div>
-            </div>
+            <table class="totals-table">
+              <tr>
+                <td class="label">Subtotal</td>
+                <td class="value">${escapeHtml(formatMoney(sale.subtotal || 0))}</td>
+              </tr>
+              <tr>
+                <td class="label">Desconto</td>
+                <td class="value">${escapeHtml(formatMoney(sale.discount || 0))}</td>
+              </tr>
+              <tr class="total">
+                <td class="label">TOTAL</td>
+                <td class="value">${escapeHtml(formatMoney(sale.total || 0))}</td>
+              </tr>
+              <tr>
+                <td class="label">Valor pago</td>
+                <td class="value">${escapeHtml(formatMoney(sale.amountPaid || 0))}</td>
+              </tr>
+              <tr>
+                <td class="label">Troco</td>
+                <td class="value">${escapeHtml(formatMoney(sale.change || 0))}</td>
+              </tr>
+            </table>
 
             ${sale.notes ? `
-              <div class="divider"></div>
-              <div><strong>Observações:</strong></div>
-              <div>${escapeHtml(sale.notes)}</div>
+              <div class="section-line dashed"></div>
+              <div class="notes-block">
+                <div class="notes-title">Observações</div>
+                <div>${escapeHtml(sale.notes)}</div>
+              </div>
             ` : ''}
 
             ${warrantyText ? `
-              <div class="divider"></div>
-              <div class="footer">${escapeHtml(warrantyText)}</div>
+              <div class="section-line dashed"></div>
+              <div class="footer-block muted">
+                <div class="footer-title">Informações</div>
+                <div>${escapeHtml(warrantyText)}</div>
+              </div>
             ` : ''}
 
-            <div class="divider"></div>
-            <div class="footer">Obrigado pela preferência</div>
+            <div class="section-line"></div>
+            <div class="footer-message">Obrigado pela preferência</div>
           </div>
         </body>
       </html>

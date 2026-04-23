@@ -69,41 +69,38 @@ export function createPrintModule(ctx) {
     return cpf || 'Não informado';
   }
 
-  function truncateText(text, max = 34) {
-    const value = String(text || '').trim();
-    if (value.length <= max) return value;
-    return `${value.slice(0, max - 1)}…`;
-  }
-
   function buildItemsTableHtml(sale, options = {}) {
     const items = Array.isArray(sale.items) ? sale.items : [];
-    const compactMode = Boolean(options.compactMode);
-    const nameLimit = compactMode ? 22 : 30;
+    const is58mm = Boolean(options.is58mm);
 
     if (!items.length) {
-      return `
-        <div class="empty-items">Sem itens lançados.</div>
-      `;
+      return `<div class="empty-items">Sem itens lançados.</div>`;
     }
 
     return `
       <table class="items-table">
+        <colgroup>
+          <col style="width:${is58mm ? '46%' : '50%'};">
+          <col style="width:${is58mm ? '10%' : '10%'};">
+          <col style="width:${is58mm ? '20%' : '18%'};">
+          <col style="width:${is58mm ? '24%' : '22%'};">
+        </colgroup>
         <thead>
           <tr>
-            <th class="col-product">Produto</th>
-            <th class="col-qty">Qtd</th>
-            <th class="col-price">Unit.</th>
-            <th class="col-total">Total</th>
+            <th class="col-product">PRODUTO</th>
+            <th class="col-qty">QTD</th>
+            <th class="col-unit">UNIT.</th>
+            <th class="col-total">TOTAL</th>
           </tr>
         </thead>
         <tbody>
           ${items.map((item) => `
             <tr>
-              <td class="col-product">
-                <div class="product-name">${escapeHtml(truncateText(item.name || '-', nameLimit))}</div>
+              <td class="col-product product-cell">
+                ${escapeHtml(item.name || '-')}
               </td>
               <td class="col-qty">${Number(item.quantity || 0)}</td>
-              <td class="col-price">${escapeHtml(formatMoney(item.unitPrice || 0))}</td>
+              <td class="col-unit">${escapeHtml(formatMoney(item.unitPrice || 0))}</td>
               <td class="col-total">${escapeHtml(formatMoney(item.total || 0))}</td>
             </tr>
           `).join('')}
@@ -116,12 +113,12 @@ export function createPrintModule(ctx) {
     const { thermalWidth, compactMode } = getPrintSettings();
     const is58mm = thermalWidth === '58mm';
 
-    const widthPx = is58mm ? 210 : 290;
-    const horizontalPadding = is58mm ? 8 : 10;
+    const widthPx = is58mm ? 220 : 300;
+    const paddingX = is58mm ? 8 : 10;
     const baseFontSize = compactMode ? (is58mm ? 10 : 11) : (is58mm ? 11 : 12);
-    const titleFontSize = is58mm ? 15 : 17;
-    const storeFontSize = is58mm ? 14 : 16;
-    const productMaxLines = is58mm ? 2 : 2;
+    const storeNameSize = is58mm ? 14 : 16;
+    const titleSize = is58mm ? 15 : 17;
+    const lineColor = '#111';
 
     const storeName = state.settings?.storeName || 'Gestão III';
     const address = state.settings?.address || '';
@@ -145,8 +142,8 @@ export function createPrintModule(ctx) {
           <style>
             :root {
               --text: #111111;
-              --muted: #4b4b4b;
-              --line: #111111;
+              --muted: #555555;
+              --line: ${lineColor};
               --bg: #ffffff;
             }
 
@@ -162,20 +159,21 @@ export function createPrintModule(ctx) {
               background: var(--bg);
               color: var(--text);
               font-family: "Courier New", Courier, monospace;
+              font-variant-numeric: tabular-nums;
+              font-feature-settings: "tnum" 1;
             }
 
             body {
+              width: 100%;
               display: flex;
               justify-content: center;
-              align-items: flex-start;
               padding: 6px;
-              width: 100%;
             }
 
             .receipt {
               width: 100%;
               max-width: ${widthPx}px;
-              padding: ${horizontalPadding}px;
+              padding: ${paddingX}px;
               font-size: ${baseFontSize}px;
               line-height: 1.35;
               color: var(--text);
@@ -186,10 +184,10 @@ export function createPrintModule(ctx) {
             }
 
             .store-name {
-              font-size: ${storeFontSize}px;
+              font-size: ${storeNameSize}px;
               font-weight: 700;
-              letter-spacing: 0.2px;
               text-transform: uppercase;
+              letter-spacing: 0.2px;
             }
 
             .store-meta {
@@ -199,26 +197,28 @@ export function createPrintModule(ctx) {
             }
 
             .receipt-title {
-              margin-top: 8px;
-              font-size: ${titleFontSize}px;
+              margin-top: 10px;
+              font-size: ${titleSize}px;
               font-weight: 700;
               text-transform: uppercase;
-              letter-spacing: 0.4px;
+              letter-spacing: 0.5px;
             }
 
-            .section-line {
+            .line-solid {
               border-top: 1px solid var(--line);
               margin: 8px 0;
             }
 
-            .section-line.dashed {
-              border-top-style: dashed;
+            .line-dashed {
+              border-top: 1px dashed var(--line);
+              margin: 8px 0;
             }
 
             .info-table,
             .totals-table {
               width: 100%;
               border-collapse: collapse;
+              table-layout: fixed;
             }
 
             .info-table td,
@@ -228,13 +228,14 @@ export function createPrintModule(ctx) {
             }
 
             .info-table td.label {
-              width: 78px;
+              width: 31%;
               font-weight: 700;
               white-space: nowrap;
               padding-right: 6px;
             }
 
             .info-table td.value {
+              width: 69%;
               word-break: break-word;
             }
 
@@ -252,15 +253,19 @@ export function createPrintModule(ctx) {
               border-bottom: 1px solid var(--line);
             }
 
+            .items-table th,
+            .items-table td {
+              padding: 4px 0;
+              vertical-align: top;
+            }
+
             .items-table thead th {
               font-weight: 700;
               text-transform: uppercase;
               border-bottom: 1px solid var(--line);
-              padding: 4px 0 4px 0;
             }
 
             .items-table tbody td {
-              padding: 4px 0;
               border-bottom: 1px dotted #777;
             }
 
@@ -269,37 +274,31 @@ export function createPrintModule(ctx) {
             }
 
             .items-table .col-product {
-              width: ${is58mm ? '42%' : '44%'};
               text-align: left;
-              padding-right: 4px;
+              padding-right: 6px;
+              word-break: break-word;
+              overflow-wrap: anywhere;
             }
 
             .items-table .col-qty {
-              width: ${is58mm ? '10%' : '10%'};
               text-align: right;
               white-space: nowrap;
-              padding-right: 4px;
+              padding-right: 6px;
             }
 
-            .items-table .col-price {
-              width: ${is58mm ? '22%' : '22%'};
+            .items-table .col-unit {
               text-align: right;
               white-space: nowrap;
-              padding-right: 4px;
+              padding-right: 6px;
             }
 
             .items-table .col-total {
-              width: ${is58mm ? '26%' : '24%'};
               text-align: right;
               white-space: nowrap;
             }
 
-            .product-name {
-              display: -webkit-box;
-              -webkit-line-clamp: ${productMaxLines};
-              -webkit-box-orient: vertical;
-              overflow: hidden;
-              word-break: break-word;
+            .product-cell {
+              line-height: 1.25;
             }
 
             .empty-items {
@@ -336,12 +335,13 @@ export function createPrintModule(ctx) {
             .notes-title,
             .footer-title {
               font-weight: 700;
-              margin-bottom: 3px;
+              margin-bottom: 4px;
+              text-transform: uppercase;
             }
 
             .footer-message {
+              margin-top: 8px;
               text-align: center;
-              margin-top: 6px;
               font-weight: 700;
             }
 
@@ -356,9 +356,9 @@ export function createPrintModule(ctx) {
 
             @media print {
               html, body {
-                width: auto;
                 margin: 0;
                 padding: 0;
+                width: auto;
                 background: #fff;
               }
 
@@ -367,9 +367,9 @@ export function createPrintModule(ctx) {
               }
 
               .receipt {
-                max-width: none;
                 width: 100%;
-                padding: ${horizontalPadding}px;
+                max-width: none;
+                padding: ${paddingX}px;
               }
             }
           </style>
@@ -383,7 +383,7 @@ export function createPrintModule(ctx) {
               <div class="receipt-title">Cupom não fiscal</div>
             </div>
 
-            <div class="section-line"></div>
+            <div class="line-solid"></div>
 
             <table class="info-table">
               <tr>
@@ -404,12 +404,12 @@ export function createPrintModule(ctx) {
               </tr>
             </table>
 
-            <div class="section-line dashed"></div>
+            <div class="line-dashed"></div>
 
             <div class="items-title">Itens</div>
-            ${buildItemsTableHtml(sale, { compactMode })}
+            ${buildItemsTableHtml(sale, { is58mm })}
 
-            <div class="section-line dashed"></div>
+            <div class="line-dashed"></div>
 
             <table class="totals-table">
               <tr>
@@ -435,7 +435,7 @@ export function createPrintModule(ctx) {
             </table>
 
             ${sale.notes ? `
-              <div class="section-line dashed"></div>
+              <div class="line-dashed"></div>
               <div class="notes-block">
                 <div class="notes-title">Observações</div>
                 <div>${escapeHtml(sale.notes)}</div>
@@ -443,14 +443,14 @@ export function createPrintModule(ctx) {
             ` : ''}
 
             ${warrantyText ? `
-              <div class="section-line dashed"></div>
+              <div class="line-dashed"></div>
               <div class="footer-block muted">
                 <div class="footer-title">Informações</div>
                 <div>${escapeHtml(warrantyText)}</div>
               </div>
             ` : ''}
 
-            <div class="section-line"></div>
+            <div class="line-solid"></div>
             <div class="footer-message">Obrigado pela preferência</div>
           </div>
         </body>

@@ -294,7 +294,8 @@ const salesModule = createSalesModule({
   formatDateTime,
   paymentMethods,
   clientsModule,
-  printModule
+  printModule,
+  auditModule
 });
 
 const deliveriesModule = createDeliveriesModule({

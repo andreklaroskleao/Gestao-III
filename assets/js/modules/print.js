@@ -69,7 +69,7 @@ export function createPrintModule(ctx) {
     return cpf || 'Não informado';
   }
 
-  function buildItemsTableHtml(sale, options = {}) {
+  function buildItemsHtml(sale, options = {}) {
     const items = Array.isArray(sale.items) ? sale.items : [];
     const is58mm = Boolean(options.is58mm);
 
@@ -78,34 +78,23 @@ export function createPrintModule(ctx) {
     }
 
     return `
-      <table class="items-table">
-        <colgroup>
-          <col style="width:${is58mm ? '46%' : '50%'};">
-          <col style="width:${is58mm ? '10%' : '10%'};">
-          <col style="width:${is58mm ? '20%' : '18%'};">
-          <col style="width:${is58mm ? '24%' : '22%'};">
-        </colgroup>
-        <thead>
-          <tr>
-            <th class="col-product">PRODUTO</th>
-            <th class="col-qty">QTD</th>
-            <th class="col-unit">UNIT.</th>
-            <th class="col-total">TOTAL</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${items.map((item) => `
-            <tr>
-              <td class="col-product product-cell">
-                ${escapeHtml(item.name || '-')}
-              </td>
-              <td class="col-qty">${Number(item.quantity || 0)}</td>
-              <td class="col-unit">${escapeHtml(formatMoney(item.unitPrice || 0))}</td>
-              <td class="col-total">${escapeHtml(formatMoney(item.total || 0))}</td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
+      <div class="items-block">
+        <div class="items-header-row">
+          <div class="col-product">PRODUTO</div>
+          <div class="col-qty">QTD</div>
+          <div class="col-unit">UNIT.</div>
+          <div class="col-total">TOTAL</div>
+        </div>
+
+        ${items.map((item) => `
+          <div class="item-row">
+            <div class="col-product product-name">${escapeHtml(item.name || '-')}</div>
+            <div class="col-qty">${Number(item.quantity || 0)}</div>
+            <div class="col-unit">${escapeHtml(formatMoney(item.unitPrice || 0))}</div>
+            <div class="col-total">${escapeHtml(formatMoney(item.total || 0))}</div>
+          </div>
+        `).join('')}
+      </div>
     `;
   }
 
@@ -113,12 +102,12 @@ export function createPrintModule(ctx) {
     const { thermalWidth, compactMode } = getPrintSettings();
     const is58mm = thermalWidth === '58mm';
 
-    const widthPx = is58mm ? 220 : 300;
-    const paddingX = is58mm ? 8 : 10;
+    const widthPx = is58mm ? 230 : 320;
+    const paddingX = is58mm ? 10 : 12;
     const baseFontSize = compactMode ? (is58mm ? 10 : 11) : (is58mm ? 11 : 12);
-    const storeNameSize = is58mm ? 14 : 16;
-    const titleSize = is58mm ? 15 : 17;
-    const lineColor = '#111';
+    const storeNameSize = is58mm ? 15 : 17;
+    const titleSize = is58mm ? 16 : 18;
+    const dashLine = '------------------------------------------------------------';
 
     const storeName = state.settings?.storeName || 'Gestão III';
     const address = state.settings?.address || '';
@@ -141,10 +130,9 @@ export function createPrintModule(ctx) {
           <title>Cupom não fiscal</title>
           <style>
             :root {
-              --text: #111111;
-              --muted: #555555;
-              --line: ${lineColor};
-              --bg: #ffffff;
+              --text: #111;
+              --muted: #555;
+              --bg: #fff;
             }
 
             * {
@@ -167,7 +155,7 @@ export function createPrintModule(ctx) {
               width: 100%;
               display: flex;
               justify-content: center;
-              padding: 6px;
+              padding: 8px;
             }
 
             .receipt {
@@ -176,7 +164,6 @@ export function createPrintModule(ctx) {
               padding: ${paddingX}px;
               font-size: ${baseFontSize}px;
               line-height: 1.35;
-              color: var(--text);
             }
 
             .center {
@@ -187,12 +174,11 @@ export function createPrintModule(ctx) {
               font-size: ${storeNameSize}px;
               font-weight: 700;
               text-transform: uppercase;
-              letter-spacing: 0.2px;
+              letter-spacing: 0.3px;
             }
 
             .store-meta {
               margin-top: 2px;
-              color: var(--muted);
               word-break: break-word;
             }
 
@@ -201,104 +187,98 @@ export function createPrintModule(ctx) {
               font-size: ${titleSize}px;
               font-weight: 700;
               text-transform: uppercase;
-              letter-spacing: 0.5px;
+              letter-spacing: 0.4px;
             }
 
-            .line-solid {
-              border-top: 1px solid var(--line);
+            .ascii-line {
+              text-align: center;
+              white-space: nowrap;
+              overflow: hidden;
               margin: 8px 0;
+              letter-spacing: 0;
             }
 
-            .line-dashed {
-              border-top: 1px dashed var(--line);
-              margin: 8px 0;
-            }
-
-            .info-table,
-            .totals-table {
+            .info-table {
               width: 100%;
               border-collapse: collapse;
               table-layout: fixed;
             }
 
-            .info-table td,
-            .totals-table td {
+            .info-table td {
               padding: 2px 0;
               vertical-align: top;
             }
 
             .info-table td.label {
-              width: 31%;
+              width: 36%;
               font-weight: 700;
               white-space: nowrap;
-              padding-right: 6px;
+            }
+
+            .info-table td.separator {
+              width: 4%;
+              text-align: center;
+              font-weight: 700;
             }
 
             .info-table td.value {
-              width: 69%;
+              width: 60%;
               word-break: break-word;
             }
 
-            .items-title {
+            .section-title-center {
+              text-align: center;
               font-weight: 700;
               text-transform: uppercase;
-              margin-bottom: 4px;
+              margin: 2px 0 6px;
             }
 
-            .items-table {
+            .items-block {
               width: 100%;
-              border-collapse: collapse;
-              table-layout: fixed;
-              border-top: 1px solid var(--line);
-              border-bottom: 1px solid var(--line);
+              border-top: 1px solid #111;
+              border-bottom: 1px solid #111;
             }
 
-            .items-table th,
-            .items-table td {
-              padding: 4px 0;
-              vertical-align: top;
+            .items-header-row,
+            .item-row {
+              display: grid;
+              grid-template-columns: ${is58mm ? '1.8fr 0.5fr 1fr 1fr' : '2.2fr 0.6fr 1fr 1fr'};
+              column-gap: 8px;
+              align-items: start;
             }
 
-            .items-table thead th {
+            .items-header-row {
               font-weight: 700;
               text-transform: uppercase;
-              border-bottom: 1px solid var(--line);
+              padding: 6px 0 5px;
+              border-bottom: 1px solid #111;
             }
 
-            .items-table tbody td {
+            .item-row {
+              padding: 6px 0;
               border-bottom: 1px dotted #777;
             }
 
-            .items-table tbody tr:last-child td {
+            .item-row:last-child {
               border-bottom: none;
             }
 
-            .items-table .col-product {
+            .col-product {
               text-align: left;
-              padding-right: 6px;
+              min-width: 0;
               word-break: break-word;
               overflow-wrap: anywhere;
             }
 
-            .items-table .col-qty {
-              text-align: right;
-              white-space: nowrap;
-              padding-right: 6px;
-            }
-
-            .items-table .col-unit {
-              text-align: right;
-              white-space: nowrap;
-              padding-right: 6px;
-            }
-
-            .items-table .col-total {
+            .col-qty,
+            .col-unit,
+            .col-total {
               text-align: right;
               white-space: nowrap;
             }
 
-            .product-cell {
-              line-height: 1.25;
+            .product-name {
+              line-height: 1.2;
             }
 
             .empty-items {
@@ -307,46 +287,57 @@ export function createPrintModule(ctx) {
               padding: 8px 0;
             }
 
+            .totals-table {
+              width: 100%;
+              border-collapse: collapse;
+              table-layout: fixed;
+            }
+
+            .totals-table td {
+              padding: 3px 0;
+              vertical-align: top;
+            }
+
             .totals-table td.label {
+              width: 65%;
               font-weight: 700;
-              padding-right: 8px;
             }
 
             .totals-table td.value {
+              width: 35%;
               text-align: right;
               white-space: nowrap;
             }
 
-            .totals-table tr.total td {
-              font-size: ${is58mm ? 12 : 13}px;
+            .totals-table tr.total-row td {
+              font-size: ${is58mm ? 13 : 14}px;
               font-weight: 700;
-              border-top: 1px solid var(--line);
-              border-bottom: 1px solid var(--line);
+              border-top: 1px solid #111;
+              border-bottom: 1px solid #111;
               padding-top: 5px;
               padding-bottom: 5px;
             }
 
-            .notes-block,
-            .footer-block {
+            .info-block {
+              text-align: center;
+            }
+
+            .info-title {
+              font-weight: 700;
+              text-transform: uppercase;
+              margin-bottom: 6px;
+            }
+
+            .info-text {
               white-space: pre-wrap;
               word-break: break-word;
+              color: var(--text);
             }
 
-            .notes-title,
-            .footer-title {
-              font-weight: 700;
-              margin-bottom: 4px;
-              text-transform: uppercase;
-            }
-
-            .footer-message {
-              margin-top: 8px;
+            .thanks {
               text-align: center;
               font-weight: 700;
-            }
-
-            .muted {
-              color: var(--muted);
+              margin-top: 6px;
             }
 
             @page {
@@ -380,36 +371,41 @@ export function createPrintModule(ctx) {
               <div class="store-name">${escapeHtml(storeName)}</div>
               ${address ? `<div class="store-meta">${escapeHtml(address)}</div>` : ''}
               ${phone ? `<div class="store-meta">Telefone: ${escapeHtml(phone)}</div>` : ''}
-              <div class="receipt-title">Cupom não fiscal</div>
+              <div class="receipt-title">CUPOM NÃO FISCAL</div>
             </div>
 
-            <div class="line-solid"></div>
+            <div class="ascii-line">${dashLine}</div>
 
             <table class="info-table">
               <tr>
-                <td class="label">Data/Hora:</td>
+                <td class="label">Data/Hora</td>
+                <td class="separator">:</td>
                 <td class="value">${escapeHtml(saleDateTime)}</td>
               </tr>
               <tr>
-                <td class="label">Cliente:</td>
+                <td class="label">Cliente</td>
+                <td class="separator">:</td>
                 <td class="value">${escapeHtml(customerName)}</td>
               </tr>
               <tr>
-                <td class="label">CPF:</td>
+                <td class="label">CPF</td>
+                <td class="separator">:</td>
                 <td class="value">${escapeHtml(customerCpf)}</td>
               </tr>
               <tr>
-                <td class="label">Pagamento:</td>
+                <td class="label">Pagamento</td>
+                <td class="separator">:</td>
                 <td class="value">${escapeHtml(sale.paymentMethod || '-')}</td>
               </tr>
             </table>
 
-            <div class="line-dashed"></div>
+            <div class="ascii-line">${dashLine}</div>
 
-            <div class="items-title">Itens</div>
-            ${buildItemsTableHtml(sale, { is58mm })}
+            <div class="section-title-center">ITENS</div>
 
-            <div class="line-dashed"></div>
+            ${buildItemsHtml(sale, { is58mm })}
+
+            <div class="ascii-line">${dashLine}</div>
 
             <table class="totals-table">
               <tr>
@@ -420,7 +416,7 @@ export function createPrintModule(ctx) {
                 <td class="label">Desconto</td>
                 <td class="value">${escapeHtml(formatMoney(sale.discount || 0))}</td>
               </tr>
-              <tr class="total">
+              <tr class="total-row">
                 <td class="label">TOTAL</td>
                 <td class="value">${escapeHtml(formatMoney(sale.total || 0))}</td>
               </tr>
@@ -434,24 +430,24 @@ export function createPrintModule(ctx) {
               </tr>
             </table>
 
-            ${sale.notes ? `
-              <div class="line-dashed"></div>
-              <div class="notes-block">
-                <div class="notes-title">Observações</div>
-                <div>${escapeHtml(sale.notes)}</div>
-              </div>
-            ` : ''}
-
             ${warrantyText ? `
-              <div class="line-dashed"></div>
-              <div class="footer-block muted">
-                <div class="footer-title">Informações</div>
-                <div>${escapeHtml(warrantyText)}</div>
+              <div class="ascii-line">${dashLine}</div>
+              <div class="info-block">
+                <div class="info-title">INFORMAÇÕES</div>
+                <div class="info-text">${escapeHtml(warrantyText)}</div>
               </div>
             ` : ''}
 
-            <div class="line-solid"></div>
-            <div class="footer-message">Obrigado pela preferência</div>
+            ${sale.notes ? `
+              <div class="ascii-line">${dashLine}</div>
+              <div class="info-block">
+                <div class="info-title">OBSERVAÇÕES</div>
+                <div class="info-text">${escapeHtml(sale.notes)}</div>
+              </div>
+            ` : ''}
+
+            <div class="ascii-line">${dashLine}</div>
+            <div class="thanks">Obrigado pela preferência!</div>
           </div>
         </body>
       </html>

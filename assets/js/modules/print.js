@@ -231,19 +231,33 @@ export function createPrintModule(ctx) {
     ].join('\n');
   }
 
+  function buildSectionCentered(title, text, width) {
+    const clean = String(text || '').trim().toUpperCase();
+    if (!clean) return '';
+
+    return [
+      repeatChar('-', width),
+      centerText(String(title || '').toUpperCase(), width),
+      repeatChar('-', width),
+      ...wrapText(clean, width).map((line) => centerText(line, width))
+    ].join('\n');
+  }
+
   function buildReceiptHtml(sale = {}) {
     const { thermalWidth, compactMode } = getPrintSettings();
     const is58mm = thermalWidth === '58mm';
 
     const widthPx = is58mm ? 230 : 320;
     const charsPerLine = is58mm ? 32 : 42;
-    const fontSize = compactMode ? (is58mm ? 10 : 11) : (is58mm ? 11 : 12);
+    const bodyFontSize = compactMode ? (is58mm ? 10 : 11) : (is58mm ? 11 : 12);
+    const headerFontSize = compactMode ? (is58mm ? 12 : 13) : (is58mm ? 13 : 15);
+    const storeFontSize = compactMode ? (is58mm ? 14 : 16) : (is58mm ? 16 : 18);
     const padding = is58mm ? 8 : 10;
 
-    const storeName = String(state.settings?.storeName || 'Gestão III').toUpperCase();
-    const address = String(state.settings?.address || '').toUpperCase();
-    const phone = String(state.settings?.phone || state.settings?.storePhone || '').toUpperCase();
-    const warrantyText = String(state.settings?.warrantyText || '').trim().toUpperCase();
+    const storeName = String(state.settings?.storeName || 'Gestão III').trim().toUpperCase();
+    const address = String(state.settings?.address || '').trim().toUpperCase();
+    const phone = String(state.settings?.phone || state.settings?.storePhone || '').trim().toUpperCase();
+    const warrantyText = String(state.settings?.warrantyText || '').trim();
 
     const saleDateTime =
       String(sale.saleDateTimeLabel || '').trim() ||
@@ -255,59 +269,29 @@ export function createPrintModule(ctx) {
 
     const separator = repeatChar('-', charsPerLine);
 
-    const headerLines = [
-      centerText(storeName, charsPerLine),
+    const headerText = [
+      ...(storeName ? [centerText(storeName, charsPerLine)] : []),
       ...(address ? wrapText(address, charsPerLine).map((line) => centerText(line, charsPerLine)) : []),
       ...(phone ? wrapText(`TELEFONE: ${phone}`, charsPerLine).map((line) => centerText(line, charsPerLine)) : []),
       centerText('CUPOM NAO FISCAL', charsPerLine)
     ].join('\n');
 
-    const infoLines = [
+    const bodyText = [
+      separator,
       ...buildKeyValueLines('Data/Hora', saleDateTime, charsPerLine, 12),
       ...buildKeyValueLines('Cliente', customerName, charsPerLine, 12),
       ...buildKeyValueLines('CPF', customerCpf, charsPerLine, 12),
-      ...buildKeyValueLines('Pagamento', sale.paymentMethod || '-', charsPerLine, 12)
-    ].join('\n');
-
-    const itemsBlock = buildItemsText(Array.isArray(sale.items) ? sale.items : [], charsPerLine, is58mm);
-    const totalsBlock = buildTotalsText(sale, charsPerLine);
-
-    const infoSection = warrantyText
-      ? [
-          separator,
-          centerText('GARANTIA', charsPerLine),
-          separator,
-          ...wrapText(warrantyText, charsPerLine).map((line) => centerText(line, charsPerLine))
-        ].join('\n')
-      : '';
-
-    const notesSection = sale.notes
-      ? [
-          separator,
-          centerText('OBSERVACOES', charsPerLine),
-          separator,
-          ...wrapText(String(sale.notes || '').toUpperCase(), charsPerLine)
-        ].join('\n')
-      : '';
-
-    const footerLines = [
-      separator,
-      centerText('OBRIGADO PELA PREFERENCIA!', charsPerLine)
-    ].join('\n');
-
-    const receiptText = [
-      headerLines,
-      separator,
-      infoLines,
+      ...buildKeyValueLines('Pagamento', sale.paymentMethod || '-', charsPerLine, 12),
       separator,
       centerText('ITENS', charsPerLine),
       separator,
-      itemsBlock,
+      buildItemsText(Array.isArray(sale.items) ? sale.items : [], charsPerLine, is58mm),
       separator,
-      totalsBlock,
-      infoSection,
-      notesSection,
-      footerLines
+      buildTotalsText(sale, charsPerLine),
+      warrantyText ? buildSectionCentered('GARANTIA', warrantyText, charsPerLine) : '',
+      sale.notes ? buildSectionCentered('OBSERVACOES', sale.notes, charsPerLine) : '',
+      separator,
+      centerText('OBRIGADO PELA PREFERENCIA!', charsPerLine)
     ]
       .filter(Boolean)
       .join('\n');
@@ -346,20 +330,35 @@ export function createPrintModule(ctx) {
               padding: ${padding}px;
             }
 
-            pre {
+            .receipt-header,
+            .receipt-body {
               margin: 0;
               white-space: pre-wrap;
               word-break: break-word;
               font-family: "Courier New", Courier, monospace;
-              font-size: ${fontSize}px;
-              line-height: 1.38;
               font-variant-numeric: tabular-nums;
               font-feature-settings: "tnum" 1;
-              font-weight: 700;
             }
 
-            .store-name-strong {
+            .receipt-header {
+              font-size: ${headerFontSize}px;
+              line-height: 1.32;
+              text-align: center;
+              font-weight: 700;
+              margin-bottom: 6px;
+            }
+
+            .store-name-line {
+              font-size: ${storeFontSize}px;
+              line-height: 1.2;
               font-weight: 900;
+              letter-spacing: 0.4px;
+            }
+
+            .receipt-body {
+              font-size: ${bodyFontSize}px;
+              line-height: 1.38;
+              font-weight: 700;
             }
 
             @page {
@@ -388,7 +387,8 @@ export function createPrintModule(ctx) {
         </head>
         <body>
           <div class="receipt">
-            <pre>${escapeHtml(receiptText)}</pre>
+            <pre class="receipt-header">${escapeHtml(headerText)}</pre>
+            <pre class="receipt-body">${escapeHtml(bodyText)}</pre>
           </div>
         </body>
       </html>

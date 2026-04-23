@@ -2,6 +2,7 @@ import { showToast } from './ui.js';
 
 export function createPrintModule(ctx) {
   const { state } = ctx;
+  const UNIDENTIFIED_CUSTOMER = 'Cliente não identificado';
 
   function escapeHtml(value = '') {
     return String(value).replace(/[&<>'"]/g, (char) => ({
@@ -33,43 +34,32 @@ export function createPrintModule(ctx) {
 
     if (typeof value === 'string') {
       const parsed = new Date(value);
-      if (!Number.isNaN(parsed.getTime())) {
-        return parsed.toLocaleString('pt-BR');
-      }
+      if (!Number.isNaN(parsed.getTime())) return parsed.toLocaleString('pt-BR');
       return value;
     }
 
     if (value instanceof Date) {
-      if (!Number.isNaN(value.getTime())) {
-        return value.toLocaleString('pt-BR');
-      }
+      if (!Number.isNaN(value.getTime())) return value.toLocaleString('pt-BR');
       return '';
     }
 
     if (value?.toDate && typeof value.toDate === 'function') {
       const parsed = value.toDate();
-      if (!Number.isNaN(parsed.getTime())) {
-        return parsed.toLocaleString('pt-BR');
-      }
+      if (!Number.isNaN(parsed.getTime())) return parsed.toLocaleString('pt-BR');
       return '';
     }
 
     if (typeof value === 'object' && value.seconds != null) {
       const parsed = new Date(Number(value.seconds) * 1000);
-      if (!Number.isNaN(parsed.getTime())) {
-        return parsed.toLocaleString('pt-BR');
-      }
+      if (!Number.isNaN(parsed.getTime())) return parsed.toLocaleString('pt-BR');
     }
 
     const parsed = new Date(value);
-    if (!Number.isNaN(parsed.getTime())) {
-      return parsed.toLocaleString('pt-BR');
-    }
-
+    if (!Number.isNaN(parsed.getTime())) return parsed.toLocaleString('pt-BR');
     return '';
   }
 
-  function truncateText(text, max = 26) {
+  function truncateText(text, max = 30) {
     const value = String(text || '').trim();
     if (value.length <= max) return value;
     return `${value.slice(0, max - 1)}…`;
@@ -79,34 +69,28 @@ export function createPrintModule(ctx) {
     const items = Array.isArray(sale.items) ? sale.items : [];
 
     if (!items.length) {
-      return `<div class="receipt-empty">Sem itens lançados.</div>`;
+      return `
+        <div class="empty-items">Sem itens lançados.</div>
+      `;
     }
 
     return `
-      <table class="receipt-items-table">
-        <colgroup>
-          <col style="width: 46%">
-          <col style="width: 10%">
-          <col style="width: 19%">
-          <col style="width: 25%">
-        </colgroup>
+      <table class="items-table">
         <thead>
           <tr>
-            <th class="col-product">Produto</th>
-            <th class="col-qtd">QTD</th>
-            <th class="col-unit">VALOR</th>
-            <th class="col-total">TOTAL</th>
+            <th>Produto</th>
+            <th>QTD</th>
+            <th>VALOR</th>
+            <th>TOTAL</th>
           </tr>
         </thead>
         <tbody>
           ${items.map((item) => `
             <tr>
-              <td class="col-product" title="${escapeHtml(item.name || '')}">
-                ${escapeHtml(truncateText(item.name || '-', 30))}
-              </td>
-              <td class="col-qtd">${Number(item.quantity || 0)}</td>
-              <td class="col-unit">${escapeHtml(formatMoney(item.unitPrice || 0))}</td>
-              <td class="col-total">${escapeHtml(formatMoney(item.total || 0))}</td>
+              <td>${escapeHtml(truncateText(item.name || '-', 30))}</td>
+              <td>${Number(item.quantity || 0)}</td>
+              <td>${escapeHtml(formatMoney(item.unitPrice || 0))}</td>
+              <td>${escapeHtml(formatMoney(item.total || 0))}</td>
             </tr>
           `).join('')}
         </tbody>
@@ -114,16 +98,23 @@ export function createPrintModule(ctx) {
     `;
   }
 
-  function buildReceiptHtml(sale) {
-    const { thermalWidth, compactMode } = getPrintSettings();
-    const widthPx = thermalWidth === '58mm' ? 350 : 520;
-    const storeName = state.settings?.storeName || 'Minha Loja';
+  function buildReceiptHtml(sale = {}) {
+    const settings = getPrintSettings();
+    const compactMode = Boolean(settings.compactMode);
+    const widthPx = settings.thermalWidth === '58mm' ? 220 : 300;
+
+    const storeName = state.settings?.storeName || 'Gestão III';
     const address = state.settings?.address || '';
     const phone = state.settings?.phone || state.settings?.storePhone || '';
     const warrantyText = state.settings?.warrantyText || '';
-    const saleDateTime = String(sale.saleDateTimeLabel || '').trim() || formatAnyDateTime(sale.createdAt) || '';
-    const customerName = String(sale.customerName || '').trim() || 'Não identificado';
-    const customerCpf = String(sale.customerCpf || '').trim();
+
+    const saleDateTime =
+      String(sale.saleDateTimeLabel || '').trim() ||
+      formatAnyDateTime(sale.createdAt) ||
+      '';
+
+    const customerName = String(sale.customerName || '').trim() || UNIDENTIFIED_CUSTOMER;
+    const customerCpf = String(sale.customerCpf || '').trim() || 'Não informado';
 
     return `
       <!doctype html>
@@ -162,7 +153,7 @@ export function createPrintModule(ctx) {
               max-width: ${widthPx}px;
               padding: ${compactMode ? '8px' : '12px'};
               font-size: ${compactMode ? '11px' : '12px'};
-              line-height: 1.35;
+              line-height: 1.4;
             }
 
             .center {
@@ -170,22 +161,18 @@ export function createPrintModule(ctx) {
             }
 
             .store-name {
-              font-size: ${compactMode ? '18px' : '20px'};
               font-weight: 700;
-              margin-bottom: 4px;
-              text-transform: uppercase;
+              font-size: ${compactMode ? '14px' : '16px'};
             }
 
             .store-meta {
+              margin-top: 2px;
               color: var(--muted);
-              margin-bottom: 2px;
-              word-break: break-word;
             }
 
             .receipt-title {
-              font-size: ${compactMode ? '14px' : '15px'};
-              font-weight: 700;
               margin-top: 8px;
+              font-weight: 700;
               text-transform: uppercase;
             }
 
@@ -201,7 +188,7 @@ export function createPrintModule(ctx) {
 
             .meta-line {
               display: grid;
-              grid-template-columns: 110px 1fr;
+              grid-template-columns: 84px 1fr;
               gap: 8px;
               align-items: start;
             }
@@ -211,51 +198,34 @@ export function createPrintModule(ctx) {
             }
 
             .meta-line .value {
-              text-align: right;
               word-break: break-word;
             }
 
-            .receipt-items-table {
+            .items-table {
               width: 100%;
               border-collapse: collapse;
-              table-layout: fixed;
-              margin-top: 6px;
             }
 
-            .receipt-items-table th,
-            .receipt-items-table td {
-              padding: 4px 2px;
-              border-bottom: 1px dotted #999;
+            .items-table th,
+            .items-table td {
+              text-align: left;
+              padding: 3px 0;
               vertical-align: top;
             }
 
-            .receipt-items-table th {
-              font-size: ${compactMode ? '10px' : '11px'};
-              font-weight: 700;
-            }
-
-            .receipt-items-table td {
-              font-size: ${compactMode ? '10px' : '11px'};
-            }
-
-            .col-product {
-              text-align: left;
-              word-break: break-word;
-              padding-right: 6px;
-            }
-
-            .col-qtd {
-              text-align: center;
-              white-space: nowrap;
-            }
-
-            .col-unit,
-            .col-total {
+            .items-table th:nth-child(2),
+            .items-table th:nth-child(3),
+            .items-table th:nth-child(4),
+            .items-table td:nth-child(2),
+            .items-table td:nth-child(3),
+            .items-table td:nth-child(4) {
               text-align: right;
               white-space: nowrap;
             }
 
-            .receipt-empty {
+            .empty-items {
+              text-align: center;
+              color: var(--muted);
               padding: 8px 0;
             }
 
@@ -269,15 +239,6 @@ export function createPrintModule(ctx) {
               gap: 10px;
               margin: 3px 0;
               align-items: center;
-            }
-
-            .totals .line span:first-child {
-              text-align: left;
-            }
-
-            .totals .line strong:last-child {
-              text-align: right;
-              min-width: 110px;
             }
 
             .totals .line.total {
@@ -322,16 +283,17 @@ export function createPrintModule(ctx) {
                 <span class="label">Data/Hora:</span>
                 <span class="value">${escapeHtml(saleDateTime || '-')}</span>
               </div>
+
               <div class="meta-line">
                 <span class="label">Cliente:</span>
                 <span class="value">${escapeHtml(customerName)}</span>
               </div>
-              ${customerCpf ? `
-                <div class="meta-line">
-                  <span class="label">CPF:</span>
-                  <span class="value">${escapeHtml(customerCpf)}</span>
-                </div>
-              ` : ''}
+
+              <div class="meta-line">
+                <span class="label">CPF:</span>
+                <span class="value">${escapeHtml(customerCpf)}</span>
+              </div>
+
               <div class="meta-line">
                 <span class="label">Pagamento:</span>
                 <span class="value">${escapeHtml(sale.paymentMethod || '-')}</span>
@@ -349,23 +311,33 @@ export function createPrintModule(ctx) {
                 <span>Subtotal</span>
                 <strong>${escapeHtml(formatMoney(sale.subtotal || 0))}</strong>
               </div>
+
               <div class="line">
                 <span>Desconto</span>
                 <strong>${escapeHtml(formatMoney(sale.discount || 0))}</strong>
               </div>
+
               <div class="line total">
                 <span>Total</span>
                 <strong>${escapeHtml(formatMoney(sale.total || 0))}</strong>
               </div>
+
               <div class="line">
                 <span>Valor pago</span>
                 <strong>${escapeHtml(formatMoney(sale.amountPaid || 0))}</strong>
               </div>
+
               <div class="line">
                 <span>Troco</span>
                 <strong>${escapeHtml(formatMoney(sale.change || 0))}</strong>
               </div>
             </div>
+
+            ${sale.notes ? `
+              <div class="divider"></div>
+              <div><strong>Observações:</strong></div>
+              <div>${escapeHtml(sale.notes)}</div>
+            ` : ''}
 
             ${warrantyText ? `
               <div class="divider"></div>
